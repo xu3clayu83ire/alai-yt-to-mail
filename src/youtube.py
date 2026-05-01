@@ -1,5 +1,6 @@
 """YouTube Data API v3 模組：取得頻道 Shorts 影片清單。"""
 
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from googleapiclient.discovery import build  # type: ignore
@@ -24,11 +25,9 @@ def get_channel_id(api_key: str, channel_url: str) -> str:
     """
     youtube = build("youtube", "v3", developerKey=api_key)
 
-    # 處理 /channel/UC... 格式
     if "/channel/" in channel_url:
         return channel_url.split("/channel/")[-1].split("/")[0]
 
-    # 處理 @handle 格式
     handle = channel_url.split("@")[-1].split("/")[0]
     try:
         response = youtube.channels().list(
@@ -44,15 +43,54 @@ def get_channel_id(api_key: str, channel_url: str) -> str:
     return items[0]["id"]
 
 
+def _parse_duration_seconds(iso_duration: str) -> int:
+    """將 ISO 8601 時長格式轉換為秒數。
+
+    例如：PT45S → 45、PT1M30S → 90、PT2M → 120
+    """
+    match = re.fullmatch(
+        r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?",
+        iso_duration,
+    )
+    if not match:
+        return 0
+    hours = int(match.group(1) or 0)
+    minutes = int(match.group(2) or 0)
+    seconds = int(match.group(3) or 0)
+    return hours * 3600 + minutes * 60 + seconds
+
+
+def _fetch_durations(youtube, video_ids: list[str]) -> dict[str, int]:
+    """批次查詢影片時長，回傳 {video_id: duration_seconds}。"""
+    if not video_ids:
+        return {}
+    try:
+        response = youtube.videos().list(
+            part="contentDetails",
+            id=",".join(video_ids),
+        ).execute()
+    except HttpError as e:
+        raise RuntimeError(f"YouTube API 查詢影片時長失敗：{e}") from e
+
+    return {
+        item["id"]: _parse_duration_seconds(item["contentDetails"]["duration"])
+        for item in response.get("items", [])
+    }
+
+
 def get_latest_shorts(
     api_key: str,
     channel_id: str,
     max_results: int = 10,
     days_back: int = 7,
+    max_duration_seconds: int = 60,
 ) -> list[VideoInfo]:
-    """取得頻道最新 Shorts 影片清單（past N days）。
+    """取得頻道最新 Shorts 影片清單（past N days，時長 ≤ max_duration_seconds）。
 
-    使用 publishedAfter 限制查詢範圍，避免拉取大量歷史影片。
+    三層過濾確保只抓到真正的 Shorts：
+    1. YouTube API videoDuration="short"（< 4 分鐘）
+    2. videos.list 取得實際時長
+    3. 過濾時長 ≤ max_duration_seconds（預設 60 秒）
     """
     youtube = build("youtube", "v3", developerKey=api_key)
 
@@ -65,7 +103,7 @@ def get_latest_shorts(
             part="id,snippet",
             channelId=channel_id,
             type="video",
-            videoDuration="short",   # Shorts 通常 < 4 分鐘
+            videoDuration="short",
             publishedAfter=published_after,
             maxResults=max_results,
             order="date",
@@ -73,16 +111,26 @@ def get_latest_shorts(
     except HttpError as e:
         raise RuntimeError(f"YouTube API 查詢失敗：{e}") from e
 
+    items = search_response.get("items", [])
+    if not items:
+        return []
+
+    video_ids = [item["id"]["videoId"] for item in items]
+    durations = _fetch_durations(youtube, video_ids)
+
     videos: list[VideoInfo] = []
-    for item in search_response.get("items", []):
+    for item in items:
         video_id = item["id"]["videoId"]
+        duration = durations.get(video_id, 0)
+        if duration > max_duration_seconds:
+            continue
         snippet = item["snippet"]
         videos.append(VideoInfo(
             video_id=video_id,
             title=snippet["title"],
             channel_id=channel_id,
             published_at=snippet["publishedAt"],
-            duration_seconds=0,   # search API 不提供時長，可後續用 videos.list 補齊
+            duration_seconds=duration,
         ))
 
     return videos

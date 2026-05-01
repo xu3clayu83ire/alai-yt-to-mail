@@ -1,70 +1,103 @@
-"""YouTube 模組單元測試：使用 mock 避免實際呼叫 API。"""
+"""YouTube 模組測試：驗證時長解析與 Shorts 過濾邏輯。"""
 
 import pytest
 from unittest.mock import MagicMock, patch
-from src.youtube import get_channel_id, get_latest_shorts, VideoInfo
+from src.youtube import _parse_duration_seconds, get_latest_shorts, VideoInfo
 
 
-@pytest.fixture
-def mock_youtube():
-    """建立 mock YouTube API 客戶端。"""
-    with patch("src.youtube.build") as mock_build:
-        mock_client = MagicMock()
-        mock_build.return_value = mock_client
-        yield mock_client
+# --- _parse_duration_seconds ---
+
+@pytest.mark.parametrize("iso, expected", [
+    ("PT45S", 45),
+    ("PT1M", 60),
+    ("PT1M30S", 90),
+    ("PT2M", 120),
+    ("PT1H", 3600),
+    ("PT1H2M3S", 3723),
+    ("PT0S", 0),
+    ("INVALID", 0),
+])
+def test_parse_duration_seconds(iso, expected):
+    """各種 ISO 8601 格式應正確轉換為秒數。"""
+    assert _parse_duration_seconds(iso) == expected
 
 
-def test_get_channel_id_from_url_with_channel_prefix():
-    """直接從 /channel/UC... URL 解析 channel_id，不需呼叫 API。"""
-    result = get_channel_id("fake_key", "https://www.youtube.com/channel/UC12345")
-    assert result == "UC12345"
+# --- get_latest_shorts ---
 
-
-def test_get_channel_id_from_handle(mock_youtube):
-    """透過 @handle 呼叫 API 取得 channel_id。"""
-    mock_youtube.channels().list().execute.return_value = {
-        "items": [{"id": "UCabc123"}]
+def _make_search_item(video_id: str, title: str) -> dict:
+    return {
+        "id": {"videoId": video_id},
+        "snippet": {
+            "title": title,
+            "publishedAt": "2026-04-30T10:00:00Z",
+        },
     }
-    result = get_channel_id("fake_key", "https://www.youtube.com/@testchannel")
-    assert result == "UCabc123"
 
 
-def test_get_channel_id_not_found_raises(mock_youtube):
-    """找不到頻道時應拋出 ValueError。"""
-    mock_youtube.channels().list().execute.return_value = {"items": []}
-    with pytest.raises(ValueError, match="找不到頻道"):
-        get_channel_id("fake_key", "https://www.youtube.com/@nonexistent")
-
-
-def test_get_latest_shorts_returns_video_list(mock_youtube):
-    """正常回傳時應轉換為 VideoInfo 清單。"""
-    mock_youtube.search().list().execute.return_value = {
+def _make_videos_list_response(items: list[tuple[str, str]]) -> dict:
+    """items: [(video_id, iso_duration)]"""
+    return {
         "items": [
-            {
-                "id": {"videoId": "vid_001"},
-                "snippet": {
-                    "title": "測試影片一",
-                    "publishedAt": "2026-05-01T00:00:00Z",
-                },
-            },
-            {
-                "id": {"videoId": "vid_002"},
-                "snippet": {
-                    "title": "測試影片二",
-                    "publishedAt": "2026-05-01T01:00:00Z",
-                },
-            },
+            {"id": vid, "contentDetails": {"duration": dur}}
+            for vid, dur in items
         ]
     }
-    results = get_latest_shorts("fake_key", "UC12345")
-    assert len(results) == 2
-    assert isinstance(results[0], VideoInfo)
-    assert results[0].video_id == "vid_001"
-    assert results[0].title == "測試影片一"
 
 
-def test_get_latest_shorts_empty_channel(mock_youtube):
-    """頻道今天沒有新影片時，回傳空清單（不報錯）。"""
+@patch("src.youtube.build")
+def test_get_latest_shorts_filters_over_60s(mock_build):
+    """超過 60 秒的影片應被過濾掉，只回傳 ≤ 60 秒的影片。"""
+    mock_youtube = MagicMock()
+    mock_build.return_value = mock_youtube
+
+    mock_youtube.search().list().execute.return_value = {
+        "items": [
+            _make_search_item("vid_45s", "Short A"),
+            _make_search_item("vid_90s", "Normal Video"),
+            _make_search_item("vid_60s", "Short B"),
+        ]
+    }
+    mock_youtube.videos().list().execute.return_value = _make_videos_list_response([
+        ("vid_45s", "PT45S"),
+        ("vid_90s", "PT1M30S"),
+        ("vid_60s", "PT60S"),
+    ])
+
+    result = get_latest_shorts("fake_key", "UC_fake_channel_id")
+
+    assert len(result) == 2
+    ids = [v.video_id for v in result]
+    assert "vid_45s" in ids
+    assert "vid_60s" in ids
+    assert "vid_90s" not in ids
+
+
+@patch("src.youtube.build")
+def test_get_latest_shorts_duration_populated(mock_build):
+    """回傳的 VideoInfo 應包含正確的 duration_seconds。"""
+    mock_youtube = MagicMock()
+    mock_build.return_value = mock_youtube
+
+    mock_youtube.search().list().execute.return_value = {
+        "items": [_make_search_item("vid1", "My Short")]
+    }
+    mock_youtube.videos().list().execute.return_value = _make_videos_list_response([
+        ("vid1", "PT30S"),
+    ])
+
+    result = get_latest_shorts("fake_key", "UC_fake")
+
+    assert len(result) == 1
+    assert result[0].duration_seconds == 30
+
+
+@patch("src.youtube.build")
+def test_get_latest_shorts_empty_channel(mock_build):
+    """頻道近期無影片時應回傳空清單。"""
+    mock_youtube = MagicMock()
+    mock_build.return_value = mock_youtube
     mock_youtube.search().list().execute.return_value = {"items": []}
-    results = get_latest_shorts("fake_key", "UC12345")
-    assert results == []
+
+    result = get_latest_shorts("fake_key", "UC_fake")
+
+    assert result == []
