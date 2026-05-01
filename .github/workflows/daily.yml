@@ -18,24 +18,23 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
-          cache-dependency-path: yt-to-mail/requirements.txt
+          cache-dependency-path: requirements.txt
 
       - name: 安裝依賴套件
-        run: pip install -r yt-to-mail/requirements.txt
+        run: pip install -r requirements.txt
 
       - name: 還原 Gmail token（從 Secret 注入）
         run: |
-          mkdir -p yt-to-mail/.source
-          echo '${{ secrets.GMAIL_TOKEN_JSON }}' > yt-to-mail/.source/gmail_token.json
+          mkdir -p .source
+          echo '${{ secrets.GMAIL_TOKEN_JSON }}' > .source/gmail_oath_token.json
 
       - name: 執行 yt-to-mail
-        working-directory: yt-to-mail
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           YOUTUBE_CHANNEL_URL: ${{ secrets.YOUTUBE_CHANNEL_URL }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
-          GMAIL_CREDENTIALS_PATH: .source/google_credentials_gmail.json
-          GMAIL_TOKEN_PATH: .source/gmail_token.json
+          GMAIL_CREDENTIALS_PATH: .source/gmail_credentials.json
+          GMAIL_TOKEN_PATH: .source/gmail_oath_token.json
           DB_PATH: data/processed.db
-        run: python src/main.py
+        run: python -m src.main
