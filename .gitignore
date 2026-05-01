@@ -24,3 +24,6 @@ htmlcov/
 *.mp3
 *.m4a
 *.webm
+
+# 執行記錄
+logs/*.log
