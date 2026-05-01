@@ -33,6 +33,11 @@ def download_audio(video_id: str, output_dir: str) -> str:
         "no_warnings": True,
     }
 
+    # 若有 cookies 檔（雲端環境繞過 bot 偵測），加入 yt-dlp 設定
+    cookies_path = os.getenv("YOUTUBE_COOKIES_PATH")
+    if cookies_path and Path(cookies_path).exists():
+        ydl_opts["cookiefile"] = cookies_path
+
     url = f"https://www.youtube.com/watch?v={video_id}"
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:

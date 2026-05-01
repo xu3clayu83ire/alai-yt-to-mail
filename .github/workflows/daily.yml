@@ -23,10 +23,11 @@ jobs:
       - name: 安裝依賴套件
         run: pip install -r requirements.txt
 
-      - name: 還原 Gmail token（從 Secret 注入）
+      - name: 還原 Gmail token 與 YouTube cookies（從 Secret 注入）
         run: |
           mkdir -p .source
           echo '${{ secrets.GMAIL_TOKEN_JSON }}' > .source/gmail_oath_token.json
+          echo '${{ secrets.YOUTUBE_COOKIES }}' > .source/youtube_cookies.txt
 
       - name: 執行 yt-to-mail
         env:
@@ -36,5 +37,6 @@ jobs:
           RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
           GMAIL_CREDENTIALS_PATH: .source/gmail_credentials.json
           GMAIL_TOKEN_PATH: .source/gmail_oath_token.json
+          YOUTUBE_COOKIES_PATH: .source/youtube_cookies.txt
           DB_PATH: data/processed.db
         run: python -m src.main
