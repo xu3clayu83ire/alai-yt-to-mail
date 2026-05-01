@@ -29,8 +29,8 @@ def download_audio(video_id: str, output_dir: str) -> str:
             "preferredquality": "128",
         }],
         "outtmpl": os.path.join(output_dir, f"{video_id}.%(ext)s"),
-        "quiet": True,
-        "no_warnings": True,
+        "quiet": False,
+        "no_warnings": False,
     }
 
     # 若有 cookies 檔（雲端環境繞過 bot 偵測），加入 yt-dlp 設定
@@ -39,6 +39,9 @@ def download_audio(video_id: str, output_dir: str) -> str:
         ydl_opts["cookiefile"] = cookies_path
         # web_creator client 對 Shorts 最相容，搭配 cookies 使用效果最佳
         ydl_opts["extractor_args"] = {"youtube": {"player_client": ["web_creator"]}}
+        print(f"   🍪 使用 cookies：{cookies_path}（{Path(cookies_path).stat().st_size} bytes）")
+    else:
+        print(f"   ⚠️  未找到 cookies 檔：{cookies_path}")
 
     url = f"https://www.youtube.com/watch?v={video_id}"
     try:
