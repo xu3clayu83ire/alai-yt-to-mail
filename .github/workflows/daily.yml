@@ -24,10 +24,14 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: 還原 Gmail token 與 YouTube cookies（從 Secret 注入）
+        env:
+          YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
+          GMAIL_TOKEN: ${{ secrets.GMAIL_TOKEN_JSON }}
         run: |
           mkdir -p .source
-          echo '${{ secrets.GMAIL_TOKEN_JSON }}' > .source/gmail_oath_token.json
-          echo '${{ secrets.YOUTUBE_COOKIES }}' > .source/youtube_cookies.txt
+          printf '%s' "$GMAIL_TOKEN" > .source/gmail_oath_token.json
+          printf '%s' "$YOUTUBE_COOKIES" > .source/youtube_cookies.txt
+          echo "cookies 行數：$(wc -l < .source/youtube_cookies.txt)"
 
       - name: 執行 yt-to-mail
         env:

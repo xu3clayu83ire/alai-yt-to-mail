@@ -37,6 +37,8 @@ def download_audio(video_id: str, output_dir: str) -> str:
     cookies_path = os.getenv("YOUTUBE_COOKIES_PATH")
     if cookies_path and Path(cookies_path).exists():
         ydl_opts["cookiefile"] = cookies_path
+        # web_creator client 對 Shorts 最相容，搭配 cookies 使用效果最佳
+        ydl_opts["extractor_args"] = {"youtube": {"player_client": ["web_creator"]}}
 
     url = f"https://www.youtube.com/watch?v={video_id}"
     try:
