@@ -33,15 +33,10 @@ def download_audio(video_id: str, output_dir: str) -> str:
         "no_warnings": False,
     }
 
-    # 若有 cookies 檔（雲端環境繞過 bot 偵測），加入 yt-dlp 設定
-    cookies_path = os.getenv("YOUTUBE_COOKIES_PATH")
-    if cookies_path and Path(cookies_path).exists():
-        ydl_opts["cookiefile"] = cookies_path
-        # ios client 不需要 PO Token，對 Shorts 支援最好
-        ydl_opts["extractor_args"] = {"youtube": {"player_client": ["ios", "android"]}}
-        print(f"   🍪 使用 cookies：{cookies_path}（{Path(cookies_path).stat().st_size} bytes）")
-    else:
-        print(f"   ⚠️  未找到 cookies 檔：{cookies_path}")
+    # ios/android client 本身能繞過 bot 偵測，且不相容 cookies，故不傳 cookies
+    # 這兩個 client 使用 app 認證流程，YouTube 不會要求登入驗證
+    ydl_opts["extractor_args"] = {"youtube": {"player_client": ["ios", "android"]}}
+    print("   📱 使用 ios/android client 下載")
 
     url = f"https://www.youtube.com/watch?v={video_id}"
     try:
