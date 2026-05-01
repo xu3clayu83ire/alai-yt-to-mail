@@ -1,0 +1,26 @@
+# 環境變數與機密資訊
+.env
+.source/
+data/
+
+# Gmail OAuth token（含授權資訊，不能公開）
+*token.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# 測試覆蓋率報告
+.coverage
+htmlcov/
+.pytest_cache/
+
+# 暫存音訊下載
+*.mp3
+*.m4a
+*.webm
