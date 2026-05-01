@@ -22,7 +22,7 @@ def download_audio(video_id: str, output_dir: str) -> str:
         return output_path
 
     ydl_opts: dict = {
-        "format": "bestaudio/best",
+        "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best",
         "postprocessors": [{
             "key": "FFmpegExtractAudio",
             "preferredcodec": "mp3",
