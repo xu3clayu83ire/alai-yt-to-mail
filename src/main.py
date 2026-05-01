@@ -2,8 +2,11 @@
 
 import os
 import shutil
+import subprocess
 import tempfile
 from pathlib import Path
+
+import imageio_ffmpeg  # type: ignore
 
 from src import config
 from src.database import init_db, is_processed, mark_processed
@@ -11,6 +14,23 @@ from src.youtube import get_channel_id, get_latest_shorts
 from src.downloader import download_audio, DownloadError
 from src.transcriber import transcribe, TranscriptionError
 from src.mailer import send_email
+
+
+def adjust_audio_speed(audio_path: str, speed: float, output_dir: str) -> str:
+    """用 imageio_ffmpeg 調整音訊語速，回傳處理後的檔案路徑。
+
+    speed < 1.0 = 慢速（例如 0.75 = 75% 速度）
+    speed > 1.0 = 快速（例如 1.25 = 125% 速度）
+    atempo 範圍限制為 0.5~2.0。
+    """
+    suffix = Path(audio_path).suffix
+    output_path = os.path.join(output_dir, f"adjusted{suffix}")
+    ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+    subprocess.run(
+        [ffmpeg_exe, "-i", audio_path, "-filter:a", f"atempo={speed}", "-vn", output_path, "-y", "-loglevel", "quiet"],
+        check=True,
+    )
+    return output_path
 
 
 def main() -> None:
@@ -54,6 +74,11 @@ def main() -> None:
                 mark_processed(config.DB_PATH, video.video_id, video.title, channel_id, "failed")
                 failed_count += 1
                 continue
+
+            # 語速調整（若設定非 1.0）
+            if config.AUDIO_SPEED != 1.0:
+                audio_path = adjust_audio_speed(audio_path, config.AUDIO_SPEED, tmp_dir)
+                print(f"   ✅ 語速調整：{config.AUDIO_SPEED}x → {Path(audio_path).name}")
 
             # 語音轉文字
             try:

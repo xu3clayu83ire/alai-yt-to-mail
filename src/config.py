@@ -35,3 +35,6 @@ RECIPIENT_EMAIL: str = _require("RECIPIENT_EMAIL")
 
 # SQLite
 DB_PATH: str = os.getenv("DB_PATH", "data/processed.db")
+
+# 音訊語速調整（1.0 = 原速，0.75 = 75% 速度，0.5~2.0 之間）
+AUDIO_SPEED: float = float(os.getenv("AUDIO_SPEED", "1.0"))
