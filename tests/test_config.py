@@ -3,19 +3,15 @@
 import pytest
 import importlib
 import os
+from unittest.mock import patch
 
 
 def test_missing_required_env_raises_error(monkeypatch):
-    """缺少必要環境變數時，import config 應拋出 EnvironmentError。"""
-    # 清除所有相關環境變數
-    for key in ["YOUTUBE_API_KEY", "YOUTUBE_CHANNEL_URL", "OPENAI_API_KEY",
-                "GMAIL_CREDENTIALS_PATH", "RECIPIENT_EMAIL"]:
-        monkeypatch.delenv(key, raising=False)
-
+    """_require() 在環境變數缺失時應拋出 EnvironmentError。"""
+    monkeypatch.delenv("SOME_NONEXISTENT_KEY_XYZ", raising=False)
+    from src.config import _require
     with pytest.raises(EnvironmentError, match="必要的環境變數"):
-        import src.config
-        # 強制重新載入以觸發模組頂層的 _require() 呼叫
-        importlib.reload(src.config)
+        _require("SOME_NONEXISTENT_KEY_XYZ")
 
 
 def test_optional_env_has_default(monkeypatch, tmp_path):

@@ -19,9 +19,7 @@ from src.mailer import send_email
 def adjust_audio_speed(audio_path: str, speed: float, output_dir: str) -> str:
     """用 imageio_ffmpeg 調整音訊語速，回傳處理後的檔案路徑。
 
-    speed < 1.0 = 慢速（例如 0.75 = 75% 速度）
-    speed > 1.0 = 快速（例如 1.25 = 125% 速度）
-    atempo 範圍限制為 0.5~2.0。
+    speed < 1.0 = 慢速（例如 0.75 = 75% 速度），範圍 0.5~2.0。
     """
     suffix = Path(audio_path).suffix
     output_path = os.path.join(output_dir, f"adjusted{suffix}")
@@ -34,99 +32,75 @@ def adjust_audio_speed(audio_path: str, speed: float, output_dir: str) -> str:
 
 
 def main() -> None:
-    """主流程：每次執行處理當天未處理的 Shorts 影片。"""
-    # 初始化資料庫（若尚不存在則建立）
+    """主流程：每天寄出一部最新未處理的 Shorts 影片。"""
     init_db(config.DB_PATH)
     print("✅ 資料庫初始化完成")
 
-    # 取得頻道 ID
     channel_id = get_channel_id(config.YOUTUBE_API_KEY, config.YOUTUBE_CHANNEL_URL)
     print(f"✅ 頻道 ID：{channel_id}")
 
-    # 取得最新 Shorts 清單
     videos = get_latest_shorts(config.YOUTUBE_API_KEY, channel_id)
-    print(f"✅ 找到 {len(videos)} 部新影片")
+    print(f"✅ 近 7 天找到 {len(videos)} 部影片")
 
     if not videos:
         print("ℹ️  近 7 天沒有影片，結束執行。")
         return
 
-    # 找出第一部未處理的影片（清單已按發布時間由新到舊排列）
-    video_to_process = None
-    for video in videos:
-        if not is_processed(config.DB_PATH, video.video_id):
-            video_to_process = video
-            break
-        print(f"⏭️  跳過已處理：{video.title}")
+    # 找出最新一部未處理的影片（清單已按發布時間由新到舊排列）
+    video = next((v for v in videos if not is_processed(config.DB_PATH, v.video_id)), None)
 
-    if video_to_process is None:
+    if video is None:
         print("ℹ️  近 7 天的影片都已處理完畢，明天再試。")
         return
 
-    # 暫存目錄（程式結束後清理）
+    print(f"▶️  處理：{video.title} ({video.video_id})")
     tmp_dir = tempfile.mkdtemp(prefix="yt-to-mail-")
 
-    processed_count = 0
-    failed_count = 0
-
     try:
-        videos = [video_to_process]
-        for video in videos:
-            if is_processed(config.DB_PATH, video.video_id):
-                continue
+        # 下載音訊
+        try:
+            audio_path = download_audio(video.video_id, tmp_dir)
+            print(f"   ✅ 下載完成：{Path(audio_path).name}")
+        except DownloadError as e:
+            print(f"   ❌ 下載失敗：{e}")
+            mark_processed(config.DB_PATH, video.video_id, video.title, channel_id, "failed")
+            return
 
-            print(f"▶️  處理：{video.title} ({video.video_id})")
+        # 語速調整（若設定非 1.0）
+        if config.AUDIO_SPEED != 1.0:
+            audio_path = adjust_audio_speed(audio_path, config.AUDIO_SPEED, tmp_dir)
+            print(f"   ✅ 語速調整：{config.AUDIO_SPEED}x")
 
-            # 下載音訊
-            try:
-                audio_path = download_audio(video.video_id, tmp_dir)
-                print(f"   ✅ 下載完成：{Path(audio_path).name}")
-            except DownloadError as e:
-                print(f"   ❌ 下載失敗：{e}")
-                mark_processed(config.DB_PATH, video.video_id, video.title, channel_id, "failed")
-                failed_count += 1
-                continue
+        # 語音轉文字
+        try:
+            transcript = transcribe(audio_path)
+            print(f"   ✅ 轉錄完成（語言：{transcript.language}，{transcript.duration_seconds:.0f}秒）")
+        except TranscriptionError as e:
+            print(f"   ❌ 轉錄失敗：{e}")
+            mark_processed(config.DB_PATH, video.video_id, video.title, channel_id, "failed")
+            return
 
-            # 語速調整（若設定非 1.0）
-            if config.AUDIO_SPEED != 1.0:
-                audio_path = adjust_audio_speed(audio_path, config.AUDIO_SPEED, tmp_dir)
-                print(f"   ✅ 語速調整：{config.AUDIO_SPEED}x → {Path(audio_path).name}")
+        # 寄送郵件
+        try:
+            send_email(
+                config.GMAIL_CREDENTIALS_PATH,
+                config.GMAIL_TOKEN_PATH,
+                config.RECIPIENT_EMAIL,
+                video,
+                transcript,
+                audio_path,
+            )
+            print(f"   ✅ 郵件已寄至 {config.RECIPIENT_EMAIL}")
+        except RuntimeError as e:
+            print(f"   ❌ 寄信失敗：{e}")
+            mark_processed(config.DB_PATH, video.video_id, video.title, channel_id, "failed")
+            return
 
-            # 語音轉文字
-            try:
-                transcript = transcribe(audio_path)
-                print(f"   ✅ 轉錄完成（語言：{transcript.language}，{transcript.duration_seconds:.0f}秒）")
-            except TranscriptionError as e:
-                print(f"   ❌ 轉錄失敗：{e}")
-                mark_processed(config.DB_PATH, video.video_id, video.title, channel_id, "failed")
-                failed_count += 1
-                continue
-
-            # 寄送郵件
-            try:
-                send_email(
-                    config.GMAIL_CREDENTIALS_PATH,
-                    config.GMAIL_TOKEN_PATH,
-                    config.RECIPIENT_EMAIL,
-                    video,
-                    transcript,
-                    audio_path,
-                )
-                print(f"   ✅ 郵件已寄至 {config.RECIPIENT_EMAIL}")
-            except RuntimeError as e:
-                print(f"   ❌ 寄信失敗：{e}")
-                mark_processed(config.DB_PATH, video.video_id, video.title, channel_id, "failed")
-                failed_count += 1
-                continue
-
-            mark_processed(config.DB_PATH, video.video_id, video.title, channel_id, "done")
-            processed_count += 1
+        mark_processed(config.DB_PATH, video.video_id, video.title, channel_id, "done")
+        print("\n✅ 完成")
 
     finally:
-        # 清理暫存音訊檔
         shutil.rmtree(tmp_dir, ignore_errors=True)
-
-    print(f"\n📊 執行摘要：成功 {processed_count} 部，失敗 {failed_count} 部")
 
 
 if __name__ == "__main__":

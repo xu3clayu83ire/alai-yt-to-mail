@@ -23,9 +23,6 @@ def _require(key: str) -> str:
 YOUTUBE_API_KEY: str = _require("YOUTUBE_API_KEY")
 YOUTUBE_CHANNEL_URL: str = _require("YOUTUBE_CHANNEL_URL")
 
-# OpenAI（本地 Whisper 模式下不需要，保留供未來切換 API 版本用）
-OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
-
 # Gmail
 GMAIL_CREDENTIALS_PATH: str = _require("GMAIL_CREDENTIALS_PATH")
 GMAIL_TOKEN_PATH: str = os.getenv("GMAIL_TOKEN_PATH", ".source/gmail_token.json")
