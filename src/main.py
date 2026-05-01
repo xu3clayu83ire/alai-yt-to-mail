@@ -48,7 +48,19 @@ def main() -> None:
     print(f"✅ 找到 {len(videos)} 部新影片")
 
     if not videos:
-        print("ℹ️  今日沒有需要處理的影片，結束執行。")
+        print("ℹ️  近 7 天沒有影片，結束執行。")
+        return
+
+    # 找出第一部未處理的影片（清單已按發布時間由新到舊排列）
+    video_to_process = None
+    for video in videos:
+        if not is_processed(config.DB_PATH, video.video_id):
+            video_to_process = video
+            break
+        print(f"⏭️  跳過已處理：{video.title}")
+
+    if video_to_process is None:
+        print("ℹ️  近 7 天的影片都已處理完畢，明天再試。")
         return
 
     # 暫存目錄（程式結束後清理）
@@ -58,9 +70,9 @@ def main() -> None:
     failed_count = 0
 
     try:
+        videos = [video_to_process]
         for video in videos:
             if is_processed(config.DB_PATH, video.video_id):
-                print(f"⏭️  跳過已處理：{video.title}")
                 continue
 
             print(f"▶️  處理：{video.title} ({video.video_id})")

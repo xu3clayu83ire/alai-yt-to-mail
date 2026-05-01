@@ -48,7 +48,7 @@ def get_latest_shorts(
     api_key: str,
     channel_id: str,
     max_results: int = 10,
-    days_back: int = 1,
+    days_back: int = 7,
 ) -> list[VideoInfo]:
     """取得頻道最新 Shorts 影片清單（past N days）。
 
