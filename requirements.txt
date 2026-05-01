@@ -1,4 +1,7 @@
 yt-dlp>=2024.1.0
+openai-whisper>=20231117
+imageio-ffmpeg>=0.4.9
+numpy>=1.24.0
 openai>=1.0.0
 google-api-python-client>=2.100.0
 google-auth-httplib2>=0.2.0

@@ -57,7 +57,7 @@ def main() -> None:
 
             # 語音轉文字
             try:
-                transcript = transcribe(config.OPENAI_API_KEY, audio_path)
+                transcript = transcribe(audio_path)
                 print(f"   ✅ 轉錄完成（語言：{transcript.language}，{transcript.duration_seconds:.0f}秒）")
             except TranscriptionError as e:
                 print(f"   ❌ 轉錄失敗：{e}")
