@@ -69,6 +69,11 @@ ERROR: Requested format is not available.
 ydl_opts["extractor_args"] = {"youtube": {"player_client": ["ios", "android"]}}
 ```
 
+## 終極結論：Azure IP 被全面封鎖
+
+Azure 資料中心 IP 被 YouTube 全面封鎖，不管任何 client 或 cookies 組合都無效。  
+**根本解法：改用家用 IP（本機執行）**，家用 IP 不在封鎖名單內。
+
 ## 參考資料
 
 - [yt-dlp FAQ: How do I pass cookies](https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp)

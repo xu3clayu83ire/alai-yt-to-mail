@@ -13,13 +13,13 @@
 **可客製化參數**：
 - 收件人信箱
 - 追蹤的 YouTube 頻道
-- 音訊語速（0.5x～2.0x）
+- 音訊語速（0.5x, 0.75x, 0.85x, 1.0x, 1.5x, 2.0x）
 - 每日發送時間
 
 **用戶功能**：帳號登入、訂閱管理、歷史紀錄
 
 **影片篩選限制**：
-- 時長 ≤ 60 秒（YouTube API `videoDuration=short` 初篩 + `videos.list` 取得實際時長二次過濾）
+- 每次只取頻道最新 1 支影片，使用 yt-dlp `download_ranges` 只下載前 60 秒音訊（不限制影片總時長，節省頻寬且無需 YouTube API 配額）
 - 僅英文頻道（Whisper 轉錄後判斷 `language == "en"`，非英文自動跳過並記錄 `skipped_language`）
 - 每人最多 5 個訂閱（Lambda API 新增訂閱時驗證）
 

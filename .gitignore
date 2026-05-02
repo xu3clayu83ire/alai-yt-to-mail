@@ -1,6 +1,8 @@
 # 環境變數與機密資訊
 .env
-.source/
+.env.*
+!.env.example
+.source/*.json
 data/
 
 # Gmail OAuth token（含授權資訊，不能公開）
@@ -10,8 +12,6 @@ data/
 __pycache__/
 *.py[cod]
 *.egg-info/
-dist/
-build/
 .venv/
 venv/
 
@@ -19,6 +19,7 @@ venv/
 .coverage
 htmlcov/
 .pytest_cache/
+coverage/
 
 # 暫存音訊下載
 *.mp3
@@ -27,3 +28,16 @@ htmlcov/
 
 # 執行記錄
 logs/*.log
+
+# Node.js
+node_modules/
+
+# TypeScript 編譯產物
+*.js
+!jest.config.js
+*.d.ts
+*.js.map
+
+# AWS CDK
+cdk.out/
+.cdk.staging
