@@ -92,6 +92,17 @@ def get_ytdlp_output_dir() -> str:
     return os.getenv("YTDLP_OUTPUT_DIR", "C:\\temp\\yt-to-mail")
 
 
+def get_ytdlp_cookies_file() -> str:
+    """
+    取得 yt-dlp 使用的 cookies.txt 檔案路徑。
+    YouTube 有時會要求登入驗證（bot 偵測），需提供已登入帳號的 cookie 才能下載。
+    建議使用瀏覽器匯出的 Netscape 格式 cookies.txt（yt-dlp --cookies 或
+    yt-dlp --cookies-from-browser chrome 皆可產生）。
+    若未設定則回傳空字串，yt-dlp 以匿名方式存取。
+    """
+    return os.environ.get("YTDLP_COOKIES_FILE", "")
+
+
 def get_frontend_url() -> str:
     """
     取得前端公開訂閱頁 URL，用於自動取消通知信中的重新訂閱連結。

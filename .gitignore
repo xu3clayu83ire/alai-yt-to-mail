@@ -2,7 +2,10 @@
 .env
 .env.*
 !.env.example
-.source/*.json
+
+.source/**
+!.source/*.md
+
 data/
 
 # Gmail OAuth token（含授權資訊，不能公開）

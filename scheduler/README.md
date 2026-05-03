@@ -9,9 +9,40 @@
 4. Gmail 寄送逐字稿與 mp3 附件
 5. 寫入 DynamoDB history 記錄執行結果
 
+## 本機測試
+
+所有指令均在 `scheduler/` 目錄下執行，使用 `uv run` 不需手動啟動虛擬環境。
+
+### 測試單筆訂閱（不受 send_time 限制）
+
+從 DynamoDB 抓第一筆訂閱直接執行，用於驗證 cookie、下載、轉錄、寄信流程：
+
+```powershell
+uv run py test_run.py
+```
+
+### 執行完整排程（比對當前 UTC 時間）
+
+與 Windows 工作排程器實際執行方式相同：
+
+```powershell
+uv run py run.py
+```
+
+> 若無輸出，表示當前 UTC 時間沒有到期的訂閱，屬正常現象。
+
+### 查看日誌
+
+```powershell
+Get-Content logs\scheduler.log -Tail 50
+```
+
+---
+
 ## 安裝需求
 
-- Python 3.12
+- Python 3.13+（Windows 上使用 `py` 指令）
+- [uv](https://docs.astral.sh/uv/)（虛擬環境與套件管理）
 - FFmpeg（需加入 PATH 環境變數）
 - AWS CLI（本機 `aws configure` 設定 yt-to-mail 憑證）
 
@@ -21,7 +52,8 @@
 
 ```powershell
 cd D:\12_Claude_Assistant\yt-to-mail\scheduler
-pip install -r requirements.txt
+uv venv
+uv pip install -r requirements.txt
 ```
 
 ### 2. 設定環境變數
@@ -63,6 +95,16 @@ python run.py
 ```
 
 授權完成後，token.json 會自動儲存，後續執行不需重新授權。
+
+### 5. 匯出 YouTube Cookies（解決 bot 偵測）
+
+在瀏覽器登入 YouTube 後執行：
+
+```powershell
+uv run yt-dlp --cookies-from-browser chrome --cookies C:\path\to\cookies.txt "https://www.youtube.com"
+```
+
+將輸出路徑填入 `.env` 的 `YTDLP_COOKIES_FILE`。
 
 ## Windows 工作排程器設定
 

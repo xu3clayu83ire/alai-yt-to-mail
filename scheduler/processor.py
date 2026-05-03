@@ -68,6 +68,19 @@ def _build_channel_content_url(channel_url: str) -> str:
     return cleaned + "/videos"
 
 
+def _apply_cookies(ydl_opts: dict[str, Any]) -> None:
+    """
+    若 YTDLP_COOKIES_FILE 已設定且檔案存在，將 cookiefile 注入 ydl_opts。
+    YouTube bot 偵測觸發時需要已登入帳號的 cookie 才能繼續下載。
+    """
+    cookies_file = config.get_ytdlp_cookies_file()
+    if cookies_file and os.path.exists(cookies_file):
+        ydl_opts["cookiefile"] = cookies_file
+        logger.debug(f"使用 cookies 檔案：{cookies_file}")
+    elif cookies_file:
+        logger.warning(f"YTDLP_COOKIES_FILE 指定的檔案不存在：{cookies_file}")
+
+
 def _get_recent_videos(channel_url: str) -> list[dict[str, Any]]:
     """
     使用 yt-dlp flat-playlist 模式查詢頻道最新 MAX_CANDIDATE_VIDEOS 支影片，回傳清單（從新到舊）。
@@ -84,6 +97,7 @@ def _get_recent_videos(channel_url: str) -> list[dict[str, Any]]:
         "extract_flat": True,
         "playlist_items": f"1-{MAX_CANDIDATE_VIDEOS}",
     }
+    _apply_cookies(ydl_opts)
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -129,6 +143,7 @@ def _download_audio(video_id: str, output_dir: str) -> str:
             }
         ],
     }
+    _apply_cookies(ydl_opts)
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
