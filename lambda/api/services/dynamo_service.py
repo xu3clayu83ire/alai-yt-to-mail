@@ -153,3 +153,32 @@ def query_by_gsi_partition(
         scan_index_forward=scan_index_forward,
         limit=limit,
     )
+
+
+def scan_table(table_name: str) -> list[dict]:
+    """
+    對 DynamoDB 資料表執行完整 Scan，處理分頁，回傳所有項目。
+
+    DynamoDB Scan 每次最多回傳 1MB 資料，超過時透過 LastEvaluatedKey 分頁。
+    此函式自動迴圈直到取得全部資料，確保不因分頁遺漏項目。
+    僅限管理員功能使用，小規模資料表效能可接受，
+    大規模場景應改用 GSI Query 或 ElasticSearch。
+    """
+    table = _get_table(table_name)
+    items: list[dict] = []
+    last_key: Optional[dict] = None
+
+    while True:
+        kwargs: dict[str, Any] = {}
+        if last_key is not None:
+            kwargs["ExclusiveStartKey"] = last_key
+
+        response = table.scan(**kwargs)
+        items.extend(response.get("Items", []))
+
+        # LastEvaluatedKey 不存在代表已取得全部資料
+        last_key = response.get("LastEvaluatedKey")
+        if last_key is None:
+            break
+
+    return items

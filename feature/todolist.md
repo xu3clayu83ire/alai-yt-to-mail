@@ -186,3 +186,96 @@
 - [ ] doc-master 建立 docs/phase3-frontend.md
 - [ ] doc-master 建立 docs/phase4-deployment.md
 - [ ] doc-master 更新 CHANGELOG.md
+
+---
+
+# yt-to-mail v3 開發進度
+
+**版本**：3.0
+**最後更新**：2026-05-03
+
+---
+
+## Phase 5：公開訂閱 API + 前端公開頁（step10, step12, step13）
+
+### step10：後端公開訂閱 API（Coder A，可立即開始）✅ 已完成
+- [x] 新增 `lambda/api/routers/public.py`（POST /public/subscribe, GET/DELETE /public/subscriptions）
+- [x] 修改 `lambda/api/models/subscription.py`（新增 PublicSubscriptionCreate, PublicSubscriptionResponse, auto_cancel_days / no_new_video_days 欄位）
+- [x] 修改 `lambda/api/main.py`（掛載 public router）
+- [x] 驗證：`POST /public/subscribe` 上限 5 個、`GET` 以 email 查詢、`DELETE` email 驗證
+- [x] cdk-tester 通過（tsc + jest + cdk synth）
+
+### step12：前端公開訂閱頁（Coder B，待 step10 完成後整合測試）✅ 已完成
+- [x] 修改 `frontend/src/App.tsx`（根路由導向 AddSubscriptionPage，調整路由表）
+- [x] 修改 `frontend/src/pages/AddSubscriptionPage.tsx`（移除 ProtectedRoute、加入 recipient_email 與 auto_cancel_days 欄位、改呼叫 POST /public/subscribe、送出後顯示成功訊息）
+- [x] 新增 `frontend/src/api/public.ts`（publicSubscribe, getPublicSubscriptions, deletePublicSubscription）
+- [x] 修改 `frontend/src/types/index.ts`（新增 PublicSubscribeRequest, PublicSubscriptionItem）
+- [x] npm run build 無錯誤
+
+### step13：前端 Email 查詢頁（Coder B，可與 step12 平行）✅ 已完成
+- [x] 新增 `frontend/src/pages/PublicSubscriptionListPage.tsx`（email 輸入、訂閱清單、無新影片計數、取消訂閱）
+- [x] 修改 `frontend/src/App.tsx`（加入 /my-subscriptions 路由）
+- [x] npm run build 無 step13 相關 TypeScript 錯誤（剩餘錯誤屬於 step14 AdminRoute/AdminLoginPage/AdminSubscriptionsPage，不在本 step 範疇）
+
+---
+
+## Phase 6：管理員後台（step11, step14）
+
+### step11：後端管理員 API（Coder A，在 step10 後執行）✅ 已完成
+- [x] 修改 `lambda/api/routers/auth.py`（login 加入 admin 判斷分支）
+- [x] 修改 `lambda/api/services/auth_service.py`（create_access_token 加入 is_admin 參數）
+- [x] 修改 `lambda/api/dependencies.py`（新增 get_current_admin）
+- [x] 新增 `lambda/api/routers/admin.py`（GET/DELETE /admin/subscriptions）
+- [x] 新增 `lambda/api/services/dynamo_service.py` 中的 scan_table 函式
+- [x] 修改 `lambda/api/models/subscription.py`（新增 AdminSubscriptionResponse）
+- [x] 修改 `lambda/api/main.py`（掛載 admin router）
+- [x] 修改 `lib/yt-to-mail-backend-stack.ts`（加入 ADMIN_EMAIL、ADMIN_PASSWORD_HASH 環境變數）
+- [x] 修改 `bin/yt-to-mail.ts`（從 CDK Context 讀取 adminEmail、adminPasswordHash）
+- [x] cdk-tester 通過（tsc + jest + cdk synth）
+
+### step14：前端管理員後台（任一 Coder，待 step11 後）✅ 已完成
+- [x] 新增 `frontend/src/pages/AdminLoginPage.tsx`
+- [x] 新增 `frontend/src/pages/AdminSubscriptionsPage.tsx`（全表查詢、email 篩選、取消訂閱）
+- [x] 新增 `frontend/src/api/admin.ts`（adminListSubscriptions, adminDeleteSubscription）
+- [x] 新增 `frontend/src/components/AdminRoute.tsx`（admin token 守衛）
+- [x] 修改 `frontend/src/utils/storage.ts`（getAdminToken, setAdminToken, removeAdminToken）
+- [x] 修改 `frontend/src/App.tsx`（加入 /admin/login, /admin/subscriptions 路由）
+- [x] npm run build 無錯誤
+
+---
+
+## Phase 7：排程器自動取消（step15）
+
+### step15：排程器自動取消計數器（Coder B，完全獨立，可最先開始）✅ 已完成
+- [x] 新增 `scheduler/dynamo_updater.py`（reset_no_new_video_days, increment_no_new_video_days, delete_subscription）
+- [x] 修改 `scheduler/processor.py`（status=done 重置計數器；status=skipped_duplicate 累加計數器，達上限觸發自動取消）
+- [x] 修改 `scheduler/gmail_sender.py`（新增 send_auto_cancel_email）
+- [x] 修改 `scheduler/config.py`（新增 get_frontend_url）
+- [x] 更新 `scheduler/.env.example`（加入 FRONTEND_URL）
+- [x] 修改 `lib/yt-to-mail-backend-stack.ts`（IAM Policy 加入 UpdateItem、DeleteItem 給 subscriptions 表）
+- [x] cdk-tester 通過（CDK Stack 修改部分）
+
+---
+
+## 文件階段（v3 完成）
+- [x] doc-master 更新 README.md（加入 v3 無帳號訂閱模式說明、API 端點、部署參數）
+- [x] doc-master 更新 CHANGELOG.md（v3.0.0 條目）
+- [x] doc-master 更新 feature/checklist.md（v3 驗收項目全數標記完成）
+- [x] doc-master 更新 feature/todolist.md（step10–step15 標記完成）
+
+---
+
+# yt-to-mail v4 開發進度
+
+**版本**：4.0
+**最後更新**：2026-05-03
+
+---
+
+## Phase 8：Shorts 篩選功能（step16）
+
+### step16：URL 解析保留 Shorts 標記 + 排程器 Shorts 播放清單支援
+
+- [ ] 修改 `lambda/api/routers/channels.py`（`_HANDLE_PATTERN` 與 `verify_channel`：保留 `/shorts` 於正規化輸出）
+- [ ] 修改 `lambda/api/routers/public.py`（`_parse_channel_url`：與 `channels.py` 邏輯一致，保留 `/shorts`）
+- [ ] 修改 `scheduler/processor.py`（`_get_recent_videos`：依 `/shorts` 結尾決定播放清單 URL）

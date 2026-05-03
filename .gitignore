@@ -40,4 +40,8 @@ node_modules/
 
 # AWS CDK
 cdk.out/
+cdk.out.*/
 .cdk.staging
+
+# 執行記錄
+scheduler/logs/

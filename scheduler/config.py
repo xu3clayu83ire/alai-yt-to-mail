@@ -90,3 +90,12 @@ def get_ytdlp_output_dir() -> str:
     建議使用不在系統磁碟根目錄的路徑，避免暫存檔案積累佔用 C 槽空間。
     """
     return os.getenv("YTDLP_OUTPUT_DIR", "C:\\temp\\yt-to-mail")
+
+
+def get_frontend_url() -> str:
+    """
+    取得前端公開訂閱頁 URL，用於自動取消通知信中的重新訂閱連結。
+    若未設定 FRONTEND_URL 環境變數，回傳空字串，
+    呼叫端（gmail_sender）負責處理空字串的顯示替代文字。
+    """
+    return os.environ.get("FRONTEND_URL", "")

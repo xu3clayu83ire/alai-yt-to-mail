@@ -48,13 +48,14 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return bcrypt.checkpw(password_bytes, hashed_bytes)
 
 
-def create_access_token(user_id: str, email: str) -> str:
+def create_access_token(user_id: str, email: str, is_admin: bool = False) -> str:
     """
     產生 JWT access token。
 
     Payload 包含 sub（user_id）、email、iat（簽發時間）、exp（過期時間）。
-    使用 HS256 對稱加密演算法，密鑰從環境變數讀取，
-    過期時間由 JWT_EXPIRE_HOURS 環境變數控制（預設 24 小時）。
+    is_admin=True 時在 payload 加入 is_admin 旗標，
+    供 get_current_admin 依賴函式判斷管理員權限，
+    實現一般用戶與管理員共用同一 JWT 結構但權限不同的設計。
 
     若 JWT_SECRET_KEY 為空，主動拋出例外而非產生不安全的 token。
     """
@@ -70,6 +71,11 @@ def create_access_token(user_id: str, email: str) -> str:
         "iat": int(now.timestamp()),
         "exp": int(expire.timestamp()),
     }
+
+    # 管理員旗標：只在 is_admin=True 時才加入 payload，
+    # 減少一般用戶 token 的大小，並讓 is_admin 缺失視同 False
+    if is_admin:
+        payload["is_admin"] = True
 
     return jwt.encode(payload, _JWT_SECRET_KEY, algorithm=_JWT_ALGORITHM)
 

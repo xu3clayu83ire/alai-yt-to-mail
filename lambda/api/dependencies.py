@@ -1,9 +1,10 @@
 """
 FastAPI 依賴注入模組。
 
-定義 get_current_user 依賴函式，供需要認證的路由使用。
+定義 get_current_user 與 get_current_admin 依賴函式，
+供需要認證的路由使用。
 透過 FastAPI Depends 機制自動從 Authorization header 提取 Bearer token，
-解析 JWT 並取得當前用戶資訊，統一在此處理 401 回應。
+解析 JWT 並取得當前用戶資訊，統一在此處理 401/403 回應。
 
 分離認證邏輯到 dependencies.py 的目的：
 - 避免各路由重複撰寫 token 解析程式碼
@@ -57,3 +58,44 @@ async def get_current_user(
         )
 
     return {"user_id": user_id, "email": email}
+
+
+async def get_current_admin(
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
+) -> dict:
+    """
+    FastAPI 依賴函式：驗證 Bearer token 並確認持有者為管理員。
+
+    先以 decode_access_token 驗證 token 有效性（無效/過期 → 401），
+    再檢查 payload 中是否包含 is_admin=True 旗標（缺失 → 403）。
+    此設計讓一般用戶持有合法 token 時仍無法存取管理員端點，
+    同時又能清楚區分「token 無效」與「權限不足」兩種錯誤。
+
+    成功時回傳：
+    {
+        "user_id": "admin",
+        "email": "admin@example.com",
+        "is_admin": True
+    }
+    """
+    token = credentials.credentials
+    payload = decode_access_token(token)
+
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token 無效或已過期",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if not payload.get("is_admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="需要管理員權限",
+        )
+
+    return {
+        "user_id": payload.get("sub"),
+        "email": payload.get("email"),
+        "is_admin": True,
+    }

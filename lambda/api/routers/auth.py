@@ -7,6 +7,10 @@
 
 email 已存在時回傳 409 Conflict，
 讓前端能區分「帳號已被使用」與「其他格式錯誤」的情境。
+
+管理員登入路徑優先判斷（不查 DynamoDB），
+憑證從環境變數讀取，不儲存於資料庫，
+以利緊急情況下直接修改環境變數即可禁用管理員存取。
 """
 
 import os
@@ -22,6 +26,11 @@ from services.dynamo_service import get_item, put_item, query_by_gsi_partition
 router = APIRouter()
 
 _USERS_TABLE: str = os.environ.get("USERS_TABLE", "yt-to-mail-users")
+
+# 管理員憑證從環境變數讀取，絕不硬編碼於程式碼中，
+# 部署時透過 CDK Stack Props 注入（adminEmail / adminPasswordHash）
+_ADMIN_EMAIL: str = os.environ.get("ADMIN_EMAIL", "")
+_ADMIN_PASSWORD_HASH: str = os.environ.get("ADMIN_PASSWORD_HASH", "")
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -74,11 +83,36 @@ async def login(user_data: UserLogin) -> dict:
     """
     用戶登入端點。
 
-    驗證失敗時（email 不存在或密碼錯誤）統一回傳 401，
-    不區分「帳號不存在」與「密碼錯誤」，防止用戶枚舉攻擊。
+    管理員路徑優先判斷：若 email 符合 ADMIN_EMAIL 環境變數，
+    直接以 bcrypt 驗證 ADMIN_PASSWORD_HASH，不查詢 DynamoDB，
+    避免管理員憑證與一般用戶資料表耦合。
+
+    一般用戶走原有邏輯：以 email-index GSI 查詢後驗證密碼。
+    驗證失敗時統一回傳 401，不區分「帳號不存在」與「密碼錯誤」，
+    防止用戶枚舉攻擊。
     成功時回傳 JWT access token，過期時間 24 小時。
     """
-    # 以 email-index GSI 查詢用戶
+    # 管理員路徑優先判斷（不查 DynamoDB），
+    # 只有在 ADMIN_EMAIL 環境變數有值且 email 相符時才進入此分支
+    if _ADMIN_EMAIL and str(user_data.email) == _ADMIN_EMAIL:
+        if not _ADMIN_PASSWORD_HASH or not verify_password(user_data.password, _ADMIN_PASSWORD_HASH):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="帳號或密碼錯誤",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        admin_token = create_access_token(
+            user_id="admin",
+            email=_ADMIN_EMAIL,
+            is_admin=True,
+        )
+        return {
+            "access_token": admin_token,
+            "token_type": "bearer",
+            "expires_in": int(os.environ.get("JWT_EXPIRE_HOURS", "24")) * 3600,
+        }
+
+    # 一般用戶：以 email-index GSI 查詢用戶
     users = query_by_gsi_partition(
         table_name=_USERS_TABLE,
         index_name="email-index",

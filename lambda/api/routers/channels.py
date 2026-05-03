@@ -18,10 +18,8 @@
 import re
 from urllib.parse import urlparse, unquote
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
-
-from dependencies import get_current_user
 
 router = APIRouter()
 
@@ -51,7 +49,6 @@ class ChannelVerifyResponse(BaseModel):
 @router.post("/verify", response_model=ChannelVerifyResponse)
 async def verify_channel(
     request: ChannelVerifyRequest,
-    current_user: dict = Depends(get_current_user),
 ) -> ChannelVerifyResponse:
     """
     驗證 YouTube 頻道 URL 並解析頻道資訊。

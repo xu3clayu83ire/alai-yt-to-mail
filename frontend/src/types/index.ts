@@ -100,3 +100,49 @@ export interface ChannelVerifyResponse {
 export interface ApiError {
   detail: string;
 }
+
+// ===================== 管理員後台相關 =====================
+
+/**
+ * 管理員後台訂閱項目型別
+ * 包含 user_id 欄位（即訂閱者 email），供管理員識別各筆訂閱所屬用戶
+ */
+export interface AdminSubscriptionItem {
+  id: string;
+  user_id: string;
+  channel_url: string;
+  channel_id: string;
+  channel_name: string;
+  recipient_email: string;
+  audio_speed: number;
+  send_time: string;
+  is_active: boolean;
+  auto_cancel_days: number;
+  no_new_video_days: number;
+  created_at: string;
+}
+
+// ===================== 公開 API 相關 =====================
+
+/** 公開訂閱請求（無需 JWT，send_time 需為 UTC HH:MM）*/
+export interface PublicSubscribeRequest {
+  recipient_email: string;
+  channel_url: string;
+  audio_speed: number;
+  send_time: string;
+  auto_cancel_days: number;
+}
+
+/** 公開訂閱項目（含自動取消設定與無新影片天數）*/
+export interface PublicSubscriptionItem {
+  id: string;
+  channel_url: string;
+  channel_name: string;
+  recipient_email: string;
+  audio_speed: number;
+  send_time: string;
+  is_active: boolean;
+  auto_cancel_days: number;
+  no_new_video_days: number;
+  created_at: string;
+}

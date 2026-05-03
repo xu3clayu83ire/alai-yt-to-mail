@@ -19,8 +19,15 @@ const app = new cdk.App();
  * 從 CDK Context 讀取 allowedOrigin（可選）
  * 初始部署不傳此參數，預設為 "*"。
  * Phase 4 完成後以 --context 傳入 CloudFront 網域以限縮 CORS。
+ *
+ * adminEmail / adminPasswordHash（可選）：
+ * 管理員帳號憑證，部署時以 --context 傳入。
+ * 未傳入時預設為空字串，管理員登入分支自動停用。
+ * 範例：cdk deploy --context adminEmail=admin@example.com --context adminPasswordHash='$2b$12$...'
  */
 const allowedOrigin = app.node.tryGetContext('allowedOrigin') as string | undefined;
+const adminEmail = (app.node.tryGetContext('adminEmail') as string | undefined) ?? '';
+const adminPasswordHash = (app.node.tryGetContext('adminPasswordHash') as string | undefined) ?? '';
 
 new YtToMailBackendStack(app, 'YtToMailBackendStack', {
   description: 'yt-to-mail 雲端後端：Lambda Function URL + DynamoDB',
@@ -29,6 +36,8 @@ new YtToMailBackendStack(app, 'YtToMailBackendStack', {
     region: process.env.CDK_DEFAULT_REGION,
   },
   allowedOrigin,
+  adminEmail,
+  adminPasswordHash,
 });
 
 new YtToMailFrontendStack(app, 'YtToMailFrontendStack', {

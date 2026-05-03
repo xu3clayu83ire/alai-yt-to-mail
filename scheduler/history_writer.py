@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import boto3
-from boto3.dynamodb.conditions import Attr
+from boto3.dynamodb.conditions import Attr, Key
 
 import config
 
@@ -29,19 +29,22 @@ ERROR_MESSAGE_MAX_LENGTH = 500
 _dynamodb = boto3.resource("dynamodb", region_name=config.get_aws_region())
 
 
-def get_sent_video_ids(subscription_id: str) -> set[str]:
+def get_sent_video_ids(user_id: str, channel_url: str) -> set[str]:
     """
-    查詢此 subscription_id 所有 status=done 的 video_id，回傳 set。
-    一次 Scan 取回全部已寄影片，供呼叫端批次過濾候選清單，
-    比對每支影片逐一查詢更省 DynamoDB 讀取次數。
+    查詢此 user_id + channel_url 所有 status=done 的 video_id，回傳 set。
+    以 user_id-index GSI 查詢，再以 channel_url 過濾，
+    確保同一用戶對同一頻道不論有幾個訂閱都不重複寄送相同影片。
+    舊記錄若無 channel_url 欄位則不參與去重（不影響正確性，只是不阻擋舊資料）。
     若查詢失敗，保守回傳空 set（允許繼續處理），並記錄警告。
     """
     history_table_name = config.get_history_table()
     try:
         table = _dynamodb.Table(history_table_name)
-        response = table.scan(
+        response = table.query(
+            IndexName="user_id-index",
+            KeyConditionExpression=Key("user_id").eq(user_id),
             FilterExpression=(
-                Attr("subscription_id").eq(subscription_id)
+                Attr("channel_url").eq(channel_url)
                 & Attr("status").eq("done")
             ),
             ProjectionExpression="video_id",
@@ -50,7 +53,7 @@ def get_sent_video_ids(subscription_id: str) -> set[str]:
     except Exception as e:
         logger.warning(
             f"查詢已寄送影片清單時發生錯誤，回傳空集合允許繼續處理 - "
-            f"subscription_id={subscription_id}, error={e}"
+            f"user_id={user_id}, channel_url={channel_url}, error={e}"
         )
         return set()
 
@@ -58,6 +61,7 @@ def get_sent_video_ids(subscription_id: str) -> set[str]:
 def write_history(
     user_id: str,
     subscription_id: str,
+    channel_url: str,
     video_id: str,
     video_title: str,
     status: str,
@@ -81,6 +85,7 @@ def write_history(
         "id": str(uuid.uuid4()),
         "user_id": user_id,
         "subscription_id": subscription_id,
+        "channel_url": channel_url,
         "video_id": video_id,
         "video_title": video_title,
         "sent_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),

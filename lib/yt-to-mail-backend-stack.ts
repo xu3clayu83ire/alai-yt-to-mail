@@ -24,9 +24,16 @@ import { Construct } from 'constructs';
  * 擴充標準 StackProps，加入 allowedOrigin 參數，
  * 供 Phase 4 部署後將 CORS AllowOrigins 限縮至 CloudFront 網域使用。
  * 預設值為 "*"，原型階段初始部署使用。
+ *
+ * adminEmail / adminPasswordHash：
+ * 管理員帳號憑證從 CDK Context 注入，絕不硬編碼於程式碼中。
+ * 部署時以 --context adminEmail=xxx --context adminPasswordHash=yyy 傳入。
+ * 空字串代表管理員功能停用（login 路由不進入 admin 分支）。
  */
 interface YtToMailBackendStackProps extends cdk.StackProps {
   allowedOrigin?: string;
+  adminEmail?: string;
+  adminPasswordHash?: string;
 }
 
 export class YtToMailBackendStack extends cdk.Stack {
@@ -38,6 +45,8 @@ export class YtToMailBackendStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: YtToMailBackendStackProps) {
     super(scope, id, props);
     const allowedOrigin = props?.allowedOrigin ?? '*';
+    const adminEmail = props?.adminEmail ?? '';
+    const adminPasswordHash = props?.adminPasswordHash ?? '';
 
     // =========================================================
     // Step 1：建立三張 DynamoDB 資料表
@@ -214,6 +223,9 @@ export class YtToMailBackendStack extends cdk.Stack {
         SUBSCRIPTIONS_TABLE: 'yt-to-mail-subscriptions',
         HISTORY_TABLE: 'yt-to-mail-history',
         ENVIRONMENT: 'production',
+        // 管理員憑證從 CDK Context 注入，空字串代表停用管理員登入分支
+        ADMIN_EMAIL: adminEmail,
+        ADMIN_PASSWORD_HASH: adminPasswordHash,
       },
       description: 'yt-to-mail API: FastAPI + Mangum, handles auth, subscriptions CRUD, history',
     });
@@ -290,6 +302,8 @@ export class YtToMailBackendStack extends cdk.Stack {
             'dynamodb:Query',
             'dynamodb:GetItem',
             'dynamodb:Scan',
+            'dynamodb:UpdateItem',   // 自動取消：累加/重置 no_new_video_days 計數器
+            'dynamodb:DeleteItem',   // 自動取消：刪除已達取消條件的訂閱
           ],
           resources: [
             `arn:aws:dynamodb:${this.region}:${this.account}:table/yt-to-mail-subscriptions`,

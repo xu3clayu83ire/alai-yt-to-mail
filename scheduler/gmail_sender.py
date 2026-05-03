@@ -192,3 +192,66 @@ def send_no_new_video_email(
     ).execute()
 
     logger.info(f"無新影片通知已寄出至 {recipient_email}，頻道：{channel_name}")
+
+
+def send_auto_cancel_email(
+    recipient_email: str,
+    channel_name: str,
+    auto_cancel_days: int,
+    channel_url: str,
+) -> None:
+    """
+    訂閱因連續 N 天無新影片達到 auto_cancel_days 上限時，寄送自動取消通知信。
+    信中說明取消原因並附上重新訂閱連結，讓收件人可自行決定是否再次訂閱。
+    重新訂閱連結來源為 config.get_frontend_url()，未設定時以提示文字替代，
+    確保即使環境變數未設定也能正常寄出郵件。
+    """
+    sender = config.get_gmail_sender()
+    subject = f"[yt-to-mail] 您對「{channel_name}」的訂閱已自動取消"
+
+    frontend_url = config.get_frontend_url()
+    if frontend_url:
+        resubscribe_text = f"如需重新訂閱，請前往：{frontend_url}"
+        resubscribe_html = f'如需重新訂閱，請前往：<a href="{frontend_url}">{frontend_url}</a>'
+    else:
+        resubscribe_text = "如需重新訂閱，請聯繫系統管理員取得訂閱頁面連結。"
+        resubscribe_html = "如需重新訂閱，請聯繫系統管理員取得訂閱頁面連結。"
+
+    plain_body = (
+        f"頻道：{channel_name}\n"
+        f"頻道連結：{channel_url}\n\n"
+        f"由於此頻道已連續 {auto_cancel_days} 天未發布新影片，\n"
+        f"您的訂閱已自動取消。\n\n"
+        f"{resubscribe_text}"
+    )
+
+    html_body = f"""
+<html>
+  <body>
+    <p><strong>頻道：</strong>{channel_name}</p>
+    <p><strong>頻道連結：</strong><a href="{channel_url}">{channel_url}</a></p>
+    <hr>
+    <p>由於此頻道已連續 <strong>{auto_cancel_days} 天</strong>未發布新影片，您的訂閱已自動取消。</p>
+    <p>{resubscribe_html}</p>
+  </body>
+</html>
+"""
+
+    message = MIMEMultipart("alternative")
+    message["to"] = recipient_email
+    message["from"] = sender
+    message["subject"] = subject
+    message.attach(MIMEText(plain_body, "plain", "utf-8"))
+    message.attach(MIMEText(html_body, "html", "utf-8"))
+
+    service = _get_gmail_service()
+    raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
+    service.users().messages().send(
+        userId="me",
+        body={"raw": raw_message},
+    ).execute()
+
+    logger.info(
+        f"自動取消通知已寄出至 {recipient_email}，"
+        f"頻道：{channel_name}，auto_cancel_days={auto_cancel_days}"
+    )

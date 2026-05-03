@@ -23,6 +23,7 @@ import yt_dlp
 import whisper
 
 import config
+import dynamo_updater
 import gmail_sender
 import history_writer
 
@@ -235,7 +236,8 @@ def process_subscription(subscription: dict[str, Any]) -> dict[str, Any]:
             }
 
         # Step 2：找出第一支尚未寄過的影片（從最新到舊）
-        sent_video_ids = history_writer.get_sent_video_ids(subscription_id)
+        # 以 user_id + channel_url 為範圍去重，避免同一用戶多個訂閱重複寄送相同影片
+        sent_video_ids = history_writer.get_sent_video_ids(user_id, channel_url)
         video_info = next(
             (e for e in candidate_videos if e.get("id", "") not in sent_video_ids),
             None,
@@ -244,13 +246,31 @@ def process_subscription(subscription: dict[str, Any]) -> dict[str, Any]:
         if video_info is None:
             logger.info(
                 f"[sub:{subscription_id}] 近期 {len(candidate_videos)} 支影片均已寄過，"
-                f"寄送無新影片通知"
+                f"累加無新影片計數器"
             )
-            gmail_sender.send_no_new_video_email(
-                recipient_email=recipient_email,
-                channel_name=channel_name,
-                channel_url=channel_url,
-            )
+            auto_cancel_days: int = int(subscription.get("auto_cancel_days", 3))
+            current_days = dynamo_updater.increment_no_new_video_days(subscription_id)
+
+            if current_days >= 0 and current_days >= auto_cancel_days:
+                # 連續無新影片天數達到上限，觸發自動取消流程
+                logger.info(
+                    f"[sub:{subscription_id}] 連續 {current_days} 天無新影片，"
+                    f"達 auto_cancel_days={auto_cancel_days} 上限，觸發自動取消"
+                )
+                gmail_sender.send_auto_cancel_email(
+                    recipient_email=recipient_email,
+                    channel_name=channel_name,
+                    auto_cancel_days=auto_cancel_days,
+                    channel_url=channel_url,
+                )
+                dynamo_updater.delete_subscription(subscription_id)
+                return {
+                    "video_id": None,
+                    "video_title": None,
+                    "status": "auto_cancelled",
+                    "error_message": None,
+                }
+
             return {
                 "video_id": None,
                 "video_title": None,
@@ -288,6 +308,7 @@ def process_subscription(subscription: dict[str, Any]) -> dict[str, Any]:
             history_writer.write_history(
                 user_id=user_id,
                 subscription_id=subscription_id,
+                channel_url=channel_url,
                 video_id=video_id,
                 video_title=video_title,
                 status="skipped_language",
@@ -314,10 +335,15 @@ def process_subscription(subscription: dict[str, Any]) -> dict[str, Any]:
         history_writer.write_history(
             user_id=user_id,
             subscription_id=subscription_id,
+            channel_url=channel_url,
             video_id=video_id,
             video_title=video_title,
             status="done",
         )
+
+        # Step 7b：重置無新影片計數器
+        # 頻道有新影片且寄信成功，清零 no_new_video_days 避免累積舊計數
+        dynamo_updater.reset_no_new_video_days(subscription_id)
 
         logger.info(f"[sub:{subscription_id}] 處理完成 - video_id={video_id}, status=done")
         return {
@@ -338,6 +364,7 @@ def process_subscription(subscription: dict[str, Any]) -> dict[str, Any]:
         history_writer.write_history(
             user_id=user_id,
             subscription_id=subscription_id,
+            channel_url=channel_url,
             video_id=video_id,
             video_title=video_title,
             status="failed",

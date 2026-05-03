@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { login } from '../api/auth';
-import { setToken } from '../utils/storage';
+import { setToken, setAdminToken } from '../utils/storage';
 
 /** 登入表單驗證 Schema */
 const loginSchema = z.object({
@@ -45,8 +45,21 @@ export function LoginPage() {
     setApiError(null);
     try {
       const response = await login(data);
-      setToken(response.access_token);
-      navigate('/');
+      // 解碼 JWT payload 判斷是否為管理員，據此決定 token 儲存方式與跳轉目標
+      let isAdmin = false;
+      try {
+        const payload = JSON.parse(atob(response.access_token.split('.')[1]));
+        isAdmin = payload.is_admin === true;
+      } catch {
+        // JWT 格式異常時視為一般用戶，不影響正常登入流程
+      }
+      if (isAdmin) {
+        setAdminToken(response.access_token);
+        navigate('/admin/subscriptions');
+      } else {
+        setToken(response.access_token);
+        navigate('/');
+      }
     } catch (error: unknown) {
       if (axios.isAxiosError(error) && error.response?.status === 401) {
         setApiError('Email 或密碼錯誤');

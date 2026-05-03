@@ -12,7 +12,7 @@ load_dotenv()  # 本機開發時從 .env 載入環境變數，Lambda 上無 .env
 from fastapi import FastAPI
 from mangum import Mangum
 
-from routers import auth, subscriptions, history, channels
+from routers import admin, auth, subscriptions, history, channels, public
 
 # 建立 FastAPI 應用實例
 # 設定標題與說明，方便 /docs 自動文件辨識
@@ -30,6 +30,8 @@ app.include_router(auth.router, prefix="/auth", tags=["認證"])
 app.include_router(subscriptions.router, prefix="/subscriptions", tags=["訂閱管理"])
 app.include_router(history.router, prefix="/history", tags=["歷史紀錄"])
 app.include_router(channels.router, prefix="/channels", tags=["頻道驗證"])
+app.include_router(public.router, prefix="/public", tags=["public"])
+app.include_router(admin.router, prefix="/admin", tags=["admin"])
 
 
 @app.get("/health", tags=["健康檢查"])
