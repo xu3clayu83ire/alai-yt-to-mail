@@ -28,16 +28,29 @@ ERROR_MESSAGE_MAX_LENGTH = 500
 # boto3 DynamoDB 資源快取：模組載入時建立一次，避免每次呼叫都重新建立 session
 _dynamodb = boto3.resource("dynamodb", region_name=config.get_aws_region())
 
+# 執行期記憶體快取：補償 DynamoDB GSI 最終一致性延遲。
+# 同一 scheduler 執行週期內，新寄出的 video_id 立即記入此 dict，
+# 確保同一輪的後續訂閱能即時看到，不依賴 GSI 更新時機。
+# key 格式："{user_id}|{channel_url}"，value：已成功寄送的 video_id set。
+_runtime_sent_cache: dict[str, set[str]] = {}
+
+
+def _cache_key(user_id: str, channel_url: str) -> str:
+    return f"{user_id}|{channel_url}"
+
 
 def get_sent_video_ids(user_id: str, channel_url: str) -> set[str]:
     """
     查詢此 user_id + channel_url 所有 status=done 的 video_id，回傳 set。
     以 user_id-index GSI 查詢，再以 channel_url 過濾，
     確保同一用戶對同一頻道不論有幾個訂閱都不重複寄送相同影片。
+    同時合併 _runtime_sent_cache，補償 DynamoDB GSI 最終一致性延遲：
+    同一輪 scheduler 執行內，第 1 個訂閱寄完後立即可被後續訂閱的查詢看到。
     舊記錄若無 channel_url 欄位則不參與去重（不影響正確性，只是不阻擋舊資料）。
     若查詢失敗，保守回傳空 set（允許繼續處理），並記錄警告。
     """
     history_table_name = config.get_history_table()
+    runtime_ids = _runtime_sent_cache.get(_cache_key(user_id, channel_url), set())
     try:
         table = _dynamodb.Table(history_table_name)
         response = table.query(
@@ -49,13 +62,14 @@ def get_sent_video_ids(user_id: str, channel_url: str) -> set[str]:
             ),
             ProjectionExpression="video_id",
         )
-        return {item["video_id"] for item in response.get("Items", [])}
+        dynamo_ids = {item["video_id"] for item in response.get("Items", [])}
+        return dynamo_ids | runtime_ids
     except Exception as e:
         logger.warning(
-            f"查詢已寄送影片清單時發生錯誤，回傳空集合允許繼續處理 - "
+            f"查詢已寄送影片清單時發生錯誤，回傳 runtime cache 允許繼續處理 - "
             f"user_id={user_id}, channel_url={channel_url}, error={e}"
         )
-        return set()
+        return set(runtime_ids)
 
 
 def write_history(
@@ -106,6 +120,10 @@ def write_history(
             f"history 寫入成功 - subscription_id={subscription_id}, "
             f"video_id={video_id}, status={status}"
         )
+        # 寫入成功後立即更新 runtime cache，補償 GSI 最終一致性延遲
+        if status == "done" and video_id:
+            key = _cache_key(user_id, channel_url)
+            _runtime_sent_cache.setdefault(key, set()).add(video_id)
     except Exception as e:
         # DynamoDB 寫入失敗僅記錄 log，不中斷流程
         logger.error(

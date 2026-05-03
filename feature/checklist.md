@@ -252,3 +252,20 @@
 
 - [ ] `tsc --noEmit` 通過（無 CDK TypeScript 修改，既有 Stack 未受影響）
 - [ ] 所有修改函式具備繁體中文函式級註解
+
+---
+
+## 跨版本通用驗收規則（每個 Phase 均適用）
+
+### IAM 權限完整性
+- [ ] 每個 Lambda / IAM User 的 PolicyStatement 均列出完整操作動詞（GetItem、Query、Scan 分別列出）
+- [ ] 凡使用 GSI Query 的資源，IAM policy resources 必須同時包含 `table/name` 與 `table/name/index/*`
+- [ ] 新增 DynamoDB 讀取路徑（如新 GSI）時，CDK stack 對應 IAM 更新列入同一個 PR / step
+
+### 例外處理可見性
+- [ ] 業務關鍵路徑的 except 區塊使用 `logger.error`（非 `logger.warning`），且包含足夠定位資訊（user_id、操作名稱）
+- [ ] Fallback 行為（如回傳空 set）在 log 中清楚標示「使用 fallback」，讓 ops 可監測
+
+### 資料格式對齊
+- [ ] URL 正規化格式在寫入端（API）、DynamoDB 儲存格式、讀取端（scheduler）三者的規格中明確描述，且一致
+- [ ] 新增欄位時，所有讀取此欄位的元件（Lambda、scheduler、前端）均已更新且版本一致

@@ -35,8 +35,9 @@ _SUBSCRIPTIONS_TABLE: str = os.environ.get("SUBSCRIPTIONS_TABLE", "yt-to-mail-su
 _MAX_SUBSCRIPTIONS: int = 5
 
 # YouTube 頻道 URL 解析正規表達式（與 channels.py 保持一致）
-_HANDLE_PATTERN = re.compile(r"^/@([^/]+?)(?:/.*)?$")
-_CHANNEL_ID_PATTERN = re.compile(r"^/channel/(UC[a-zA-Z0-9_-]{22})(?:/.*)?$")
+# section 路徑（/shorts、/videos 等）保留在 normalized_url 中，確保 scheduler 查詢正確的影片類型
+_HANDLE_PATTERN = re.compile(r"^/@([^/]+?)((?:/(?:videos|shorts|streams|live|playlists|community))?)$")
+_CHANNEL_ID_PATTERN = re.compile(r"^/channel/(UC[a-zA-Z0-9_-]{22})((?:/(?:videos|shorts|streams|live|playlists|community))?)$")
 
 
 def _parse_channel_url(channel_url: str) -> tuple[str, str, str]:
@@ -45,6 +46,8 @@ def _parse_channel_url(channel_url: str) -> tuple[str, str, str]:
 
     複用 channels.py 的解析邏輯，集中在此函式以便公開端點重用，
     避免 channels router 因需要 JWT 而無法在公開端點使用。
+    若 URL 包含 /shorts、/videos 等 section 路徑，保留在 normalized_url 中，
+    確保 scheduler 能查詢用戶訂閱的正確影片類型。
     解析失敗時拋出 HTTPException 400，讓呼叫端直接回傳錯誤給前端。
     """
     channel_url = channel_url.strip()
@@ -76,13 +79,15 @@ def _parse_channel_url(channel_url: str) -> tuple[str, str, str]:
     handle_match = _HANDLE_PATTERN.match(path)
     if handle_match:
         handle = handle_match.group(1)
-        normalized_url = f"https://www.youtube.com/@{handle}"
+        section = handle_match.group(2)   # 例如 "/shorts"，或空字串
+        normalized_url = f"https://www.youtube.com/@{handle}{section}"
         return normalized_url, handle, handle
 
     channel_id_match = _CHANNEL_ID_PATTERN.match(path)
     if channel_id_match:
         channel_id = channel_id_match.group(1)
-        normalized_url = f"https://www.youtube.com/channel/{channel_id}"
+        section = channel_id_match.group(2)
+        normalized_url = f"https://www.youtube.com/channel/{channel_id}{section}"
         return normalized_url, channel_id, channel_id
 
     raise HTTPException(

@@ -316,9 +316,11 @@ export class YtToMailBackendStack extends cdk.Stack {
           actions: [
             'dynamodb:PutItem',
             'dynamodb:Scan',
+            'dynamodb:Query',   // 查詢已寄送影片清單（get_sent_video_ids 透過 user_id-index GSI）
           ],
           resources: [
             `arn:aws:dynamodb:${this.region}:${this.account}:table/yt-to-mail-history`,
+            `arn:aws:dynamodb:${this.region}:${this.account}:table/yt-to-mail-history/index/*`,
           ],
         }),
       ],

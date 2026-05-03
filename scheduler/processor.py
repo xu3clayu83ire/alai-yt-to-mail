@@ -52,15 +52,32 @@ def _clamp_audio_speed(speed: float) -> float:
     return max(AUDIO_SPEED_MIN, min(AUDIO_SPEED_MAX, speed))
 
 
+_YOUTUBE_SECTION_SUFFIXES = ("/videos", "/shorts", "/streams", "/live", "/playlists", "/community")
+
+
+def _build_channel_content_url(channel_url: str) -> str:
+    """
+    建立查詢影片清單的 URL。
+    若 channel_url 已包含 /shorts、/videos 等 YouTube section 路徑，直接使用；
+    否則附加 /videos，確保取得影片清單而非頻道首頁（避免 yt-dlp 回傳 channel ID）。
+    """
+    cleaned = channel_url.rstrip("/")
+    for suffix in _YOUTUBE_SECTION_SUFFIXES:
+        if cleaned.endswith(suffix):
+            return cleaned
+    return cleaned + "/videos"
+
+
 def _get_recent_videos(channel_url: str) -> list[dict[str, Any]]:
     """
     使用 yt-dlp flat-playlist 模式查詢頻道最新 MAX_CANDIDATE_VIDEOS 支影片，回傳清單（從新到舊）。
     使用 flat-playlist 不實際下載影片，僅取得元資料，速度快且節省頻寬。
-    加入 /videos 路徑確保查詢影片清單而非頻道首頁（避免 yt-dlp 回傳 channel ID 而非 video ID）。
+    若 channel_url 已包含 /shorts、/videos 等路徑，保留原始路徑確保查詢正確的影片分類；
+    若為裸頻道 URL，附加 /videos 確保取得影片清單而非頻道首頁。
     過濾掉 ID 以 UC 開頭的條目（channel ID），確保清單中只有真實影片。
     若頻道無影片或取得失敗，回傳空 list 讓呼叫端決定如何處理。
     """
-    videos_url = channel_url.rstrip("/") + "/videos"
+    videos_url = _build_channel_content_url(channel_url)
 
     ydl_opts: dict[str, Any] = {
         "quiet": True,

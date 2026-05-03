@@ -5,7 +5,7 @@
 先確認 YouTube 頻道 URL 格式是否正確並取得頻道資訊。
 
 原型階段不呼叫 YouTube Data API，僅做 URL 格式解析與正規化。
-支援兩種 YouTube 頻道 URL 格式：
+支援兩種 YouTube 頻道 URL 格式，並保留 /shorts、/videos 等 section 路徑：
 - /@handle 格式：https://www.youtube.com/@channelname
 - /channel/UCxxx 格式：https://www.youtube.com/channel/UCxxxxxxxxxx
 
@@ -24,9 +24,9 @@ from pydantic import BaseModel
 router = APIRouter()
 
 # YouTube 頻道 URL 的正規表達式
-# handle 支援 Unicode（中文等）與可選的尾段路徑（/shorts、/videos 等）
-_HANDLE_PATTERN = re.compile(r"^/@([^/]+?)(?:/.*)?$")
-_CHANNEL_ID_PATTERN = re.compile(r"^/channel/(UC[a-zA-Z0-9_-]{22})(?:/.*)?$")
+# handle 支援 Unicode（中文等），section 保留 /shorts、/videos 等路徑供 scheduler 使用
+_HANDLE_PATTERN = re.compile(r"^/@([^/]+?)((?:/(?:videos|shorts|streams|live|playlists|community))?)$")
+_CHANNEL_ID_PATTERN = re.compile(r"^/channel/(UC[a-zA-Z0-9_-]{22})((?:/(?:videos|shorts|streams|live|playlists|community))?)$")
 
 
 class ChannelVerifyRequest(BaseModel):
@@ -89,7 +89,8 @@ async def verify_channel(
     handle_match = _HANDLE_PATTERN.match(path)
     if handle_match:
         handle = handle_match.group(1)
-        normalized_url = f"https://www.youtube.com/@{handle}"
+        section = handle_match.group(2)  # 例如 "/shorts"，或空字串
+        normalized_url = f"https://www.youtube.com/@{handle}{section}"
         return ChannelVerifyResponse(
             channel_url=normalized_url,
             channel_id=handle,          # 原型階段暫以 handle 填充
@@ -100,7 +101,8 @@ async def verify_channel(
     channel_id_match = _CHANNEL_ID_PATTERN.match(path)
     if channel_id_match:
         channel_id = channel_id_match.group(1)
-        normalized_url = f"https://www.youtube.com/channel/{channel_id}"
+        section = channel_id_match.group(2)
+        normalized_url = f"https://www.youtube.com/channel/{channel_id}{section}"
         return ChannelVerifyResponse(
             channel_url=normalized_url,
             channel_id=channel_id,
