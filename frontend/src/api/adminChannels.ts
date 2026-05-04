@@ -93,7 +93,7 @@ export async function adminUpdateChannel(
   data: ChannelUpdateRequest
 ): Promise<ChannelItem> {
   try {
-    const response = await axios.put<ChannelItem>(
+    const response = await axios.patch<ChannelItem>(
       `${import.meta.env.VITE_API_BASE_URL}/admin/channels/${channelId}`,
       data,
       {

@@ -281,6 +281,7 @@ export class YtToMailBackendStack extends cdk.Stack {
           lambda.HttpMethod.GET,
           lambda.HttpMethod.POST,
           lambda.HttpMethod.PUT,
+          lambda.HttpMethod.PATCH,
           lambda.HttpMethod.DELETE,
           lambda.HttpMethod.HEAD,
         ],
