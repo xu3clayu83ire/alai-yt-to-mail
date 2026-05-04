@@ -119,6 +119,13 @@ export function SubscriptionListPage() {
           ))}
         </div>
       )}
+
+      {/* 管理後台連結 */}
+      <div className="mt-8 text-center">
+        <Link to="/admin/login" className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
+          管理後台
+        </Link>
+      </div>
     </div>
   );
 }

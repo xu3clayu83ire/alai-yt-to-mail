@@ -5,6 +5,36 @@
 
 ---
 
+## [3.1.0] - 2026-05-03
+
+### Added
+
+**後端 — 管理員頻道白名單**
+- 新增 DynamoDB 資料表 `yt-to-mail-channels`（PK: channel_id）
+- `yt-to-mail-subscriptions` 新增 `channel_id-index` GSI，支援以頻道查詢所有訂閱
+- 新增 `POST /admin/channels`：管理員新增可訂閱頻道
+- 新增 `GET /admin/channels`：管理員列出所有頻道
+- 新增 `PATCH /admin/channels/{channel_id}`：管理員更新頻道資訊
+- 新增 `DELETE /admin/channels/{channel_id}`：管理員刪除頻道，同步取消所有相關訂閱並寄送通知信
+- 新增 `GET /public/channels`：無需認證，取得可訂閱頻道清單（前端下拉選單使用）
+- `scheduler/gmail_sender.py` 新增 `send_admin_removed_email`：頻道被管理員移除時通知用戶
+- Lambda 環境變數新增 `CHANNELS_TABLE`
+- IAM Policy 新增 `table/yt-to-mail-*/index/*` ARN，支援 GSI 查詢
+
+**前端 — 訂閱頁與管理員頻道管理**
+- `AddSubscriptionPage`：步驟 1 改為呼叫 `GET /public/channels` 顯示頻道下拉選單，移除 URL 輸入與 verify 流程
+- 新增 `AdminChannelsPage`（路由 `/admin/channels`）：管理員可新增、修改、刪除頻道，刪除時顯示受影響訂閱數
+- 新增 `frontend/src/api/publicChannels.ts`
+- 新增 `frontend/src/api/adminChannels.ts`
+- `types/index.ts` 新增 `PublicChannelItem`、`ChannelItem`、`ChannelCreateRequest`、`ChannelUpdateRequest`、`ChannelDeleteResponse`
+
+### Removed
+- `lambda/api/routers/channels.py`：廢棄的 `/channels/verify` 端點
+- `frontend/src/api/channels.ts`：廢棄的 `verifyChannel` API 函式
+- `types/index.ts` 移除 `ChannelVerifyRequest`、`ChannelVerifyResponse`
+
+---
+
 ## [3.0.0] - 2026-05-03
 
 ### Added

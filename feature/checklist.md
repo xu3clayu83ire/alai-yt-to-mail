@@ -255,6 +255,115 @@
 
 ---
 
+# yt-to-mail v5 驗收清單
+
+**版本**：5.0（Phase 9 驗收完成）
+**最後更新**：2026-05-03
+
+---
+
+## Phase 9：管理員頻道白名單
+
+### CDK 基礎設施（step17）
+
+#### DynamoDB
+- [x] `yt-to-mail-channels` 資料表在 CloudFormation template 中定義，PK 為 `channel_id`（STRING）
+- [x] `yt-to-mail-subscriptions` 含 `channel_id-index` GSI（PK: channel_id，ALL projection）
+- [x] Lambda 環境變數含 `CHANNELS_TABLE: yt-to-mail-channels`
+
+#### IAM
+- [x] Lambda IAM Policy resources 含 `arn:aws:dynamodb:${region}:${account}:table/yt-to-mail-*/index/*`
+
+#### CDK 建置
+- [x] `cdk synth` 通過，`tsc --noEmit` 無錯誤
+- [x] `ChannelsTableName` CfnOutput 存在於 template
+
+---
+
+### 後端 API — 管理員頻道 CRUD（step17）
+
+#### 新增頻道
+- [x] `POST /admin/channels`（admin JWT）成功新增，回傳 201 + `{ channel_id, channel_name, channel_url, created_at }`
+- [x] `POST /admin/channels` 重複 `channel_id` 回傳 409
+- [x] `POST /admin/channels` 無 admin JWT 回傳 403
+
+#### 列出頻道
+- [x] `GET /admin/channels`（admin JWT）回傳 `ChannelResponse[]`，含所有欄位
+
+#### 更新頻道
+- [x] `PATCH /admin/channels/{channel_id}`（admin JWT）成功更新 channel_name 或 channel_url
+- [x] `PATCH /admin/channels/{channel_id}` 不存在時回傳 404
+
+#### 刪除頻道（串聯）
+- [x] `DELETE /admin/channels/{channel_id}` 不存在時回傳 404
+- [x] `DELETE /admin/channels/{channel_id}` 存在 N 筆訂閱，回傳 `{ message: "deleted", cancelled_subscriptions: N }`
+- [x] 刪除後，DynamoDB subscriptions 中對應的 N 筆訂閱記錄不存在
+- [x] 刪除後，DynamoDB channels 中該頻道記錄不存在
+- [x] 每筆受影響訂閱的 `recipient_email` 收到「管理員移除」通知信
+
+---
+
+### 後端 API — 公開頻道列表（step17）
+
+- [x] `GET /public/channels`（無 JWT）回傳 `PublicChannelResponse[]`
+- [x] 回傳欄位含 `channel_id`、`channel_name`、`channel_url`，不含 `created_at`
+- [x] 頻道資料表為空時回傳空陣列 `[]`
+
+---
+
+### gmail_sender.py（step17）
+
+- [x] `send_admin_removed_email(recipient_email, channel_name, channel_url)` 函式存在
+- [x] 寄出郵件主旨含「管理員移除」語意
+- [x] 郵件包含純文字與 HTML 雙版本
+- [x] 函式具備繁體中文函式級註解
+
+---
+
+### 廢棄元件刪除（step17）
+
+- [x] `lambda/api/routers/channels.py` 不存在
+- [x] `lambda/api/main.py` 中不再 import `channels` router
+- [x] `GET /channels/verify` 端點回傳 404 或不存在
+
+---
+
+### 前端 — AddSubscriptionPage（step18）
+
+- [x] `frontend/src/api/channels.ts` 不存在
+- [x] `AddSubscriptionPage.tsx` 不含 `verifyChannel` import
+- [x] `AddSubscriptionPage.tsx` 不含 `channel_url` 文字輸入欄位
+- [x] 頁面載入時自動呼叫 `GET /public/channels`，下拉選單顯示可訂閱頻道
+- [x] 下拉選單載入中顯示 disabled 狀態，載入完成後啟用
+- [x] 未選擇頻道時無法進入步驟 2（顯示驗證錯誤）
+- [x] 選擇頻道後進入步驟 2，步驟 2 顯示頻道名稱（唯讀）
+- [x] 步驟 2 送出後呼叫 `POST /public/subscribe`，body 中 `channel_url` 來自所選頻道
+- [x] 頻道列表為空時顯示「目前尚無可訂閱頻道」提示
+- [x] 成功後「再訂閱一個」重置回步驟 1
+
+---
+
+### 前端 — AdminChannelsPage（step18）
+
+- [x] 存取 `/admin/channels` 未登入時導向 `/admin/login`
+- [x] admin 登入後可存取 `/admin/channels`，頁面列出所有頻道
+- [x] 新增頻道成功後列表即時更新
+- [x] 新增重複 channel_id 顯示「此頻道 ID 已存在」錯誤
+- [x] 修改頻道成功後列表即時更新
+- [x] 刪除前顯示確認對話框，含「將取消所有訂閱並通知用戶」警告
+- [x] 刪除成功後列表更新
+
+---
+
+### 前端建置（step18）
+
+- [x] `npm run build` 無 TypeScript 錯誤
+- [x] `ChannelVerifyRequest`、`ChannelVerifyResponse` 已從 `types/index.ts` 移除
+- [x] `PublicChannelItem`、`ChannelItem` 等新型別正確定義於 `types/index.ts`
+- [x] 所有新增 API 函式具備 TypeScript 回傳型別標注
+
+---
+
 ## 跨版本通用驗收規則（每個 Phase 均適用）
 
 ### IAM 權限完整性

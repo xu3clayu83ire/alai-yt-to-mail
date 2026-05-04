@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { ReactElement } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { adminListSubscriptions, adminDeleteSubscription } from '../api/admin';
 import { removeAdminToken } from '../utils/storage';
 import { utcTimeToLocal } from '../utils/timezone';
@@ -137,14 +137,36 @@ export function AdminSubscriptionsPage(): ReactElement {
     navigate('/admin/login', { replace: true });
   };
 
+  const location = useLocation();
+  const isActive = (path: string) => location.pathname === path;
+
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* 頁首：標題 + 登出按鈕 */}
+      {/* 頁首：標題 + 導覽連結 + 登出按鈕 */}
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">訂閱管理後台</h1>
-            <p className="text-gray-500 text-sm mt-0.5">DailyCast Admin</p>
+          <div className="flex items-center gap-6">
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">DailyCast Admin</h1>
+            </div>
+            <nav className="flex items-center gap-4">
+              <Link
+                to="/admin/subscriptions"
+                className={`text-sm font-medium transition-colors ${
+                  isActive('/admin/subscriptions') ? 'text-blue-600' : 'text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                訂閱列表
+              </Link>
+              <Link
+                to="/admin/channels"
+                className={`text-sm font-medium transition-colors ${
+                  isActive('/admin/channels') ? 'text-blue-600' : 'text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                頻道管理
+              </Link>
+            </nav>
           </div>
           <button
             onClick={handleLogout}

@@ -19,6 +19,7 @@ import { EditSubscriptionPage } from './pages/EditSubscriptionPage';
 import { HistoryPage } from './pages/HistoryPage';
 import { AdminLoginPage } from './pages/AdminLoginPage';
 import { AdminSubscriptionsPage } from './pages/AdminSubscriptionsPage';
+import { AdminChannelsPage } from './pages/AdminChannelsPage';
 import { getToken } from './utils/storage';
 import { PublicSubscriptionListPage } from './pages/PublicSubscriptionListPage';
 
@@ -122,6 +123,14 @@ function App() {
             element={
               <AdminRoute>
                 <AdminSubscriptionsPage />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/admin/channels"
+            element={
+              <AdminRoute>
+                <AdminChannelsPage />
               </AdminRoute>
             }
           />

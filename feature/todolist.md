@@ -1,7 +1,7 @@
 # yt-to-mail v2 開發進度
 
 **版本**：2.0  
-**最後更新**：2026-05-02
+**最後更新**：2026-05-03
 
 ---
 
@@ -279,3 +279,68 @@
 - [ ] 修改 `lambda/api/routers/channels.py`（`_HANDLE_PATTERN` 與 `verify_channel`：保留 `/shorts` 於正規化輸出）
 - [ ] 修改 `lambda/api/routers/public.py`（`_parse_channel_url`：與 `channels.py` 邏輯一致，保留 `/shorts`）
 - [ ] 修改 `scheduler/processor.py`（`_get_recent_videos`：依 `/shorts` 結尾決定播放清單 URL）
+
+---
+
+# yt-to-mail v5 開發進度
+
+**版本**：5.0
+**最後更新**：2026-05-03
+
+---
+
+## Phase 9：管理員頻道白名單（step17, step18）
+
+### step17：CDK 基礎設施 + 後端 API（單一 Coder，依序執行）
+
+#### Step 17-A：CDK 基礎設施
+- [x] `lib/yt-to-mail-backend-stack.ts`：新增 `channelsTable`（PK: channel_id）
+- [x] `lib/yt-to-mail-backend-stack.ts`：新增 `channel_id-index` GSI 至 subscriptionsTable
+- [x] `lib/yt-to-mail-backend-stack.ts`：新增 `CHANNELS_TABLE` Lambda 環境變數
+- [x] `lib/yt-to-mail-backend-stack.ts`：IAM Policy resources 補充 `table/yt-to-mail-*/index/*`
+- [x] `lib/yt-to-mail-backend-stack.ts`：新增 `ChannelsTableName` CfnOutput
+
+#### Step 17-B：Pydantic Channel 模型
+- [x] 新增 `lambda/api/models/channel.py`（ChannelCreate、ChannelUpdate、ChannelResponse、PublicChannelResponse）
+
+#### Step 17-C：管理員頻道 Router
+- [x] 新增 `lambda/api/routers/admin_channels.py`（POST /、GET /、PATCH /{channel_id}、DELETE /{channel_id}）
+- [x] DELETE 串聯：查 channel_id-index GSI → 寄通知信 → 批次刪訂閱 → 刪頻道
+
+#### Step 17-D：公開頻道端點
+- [x] 修改 `lambda/api/routers/public.py`：新增 `GET /channels` 端點（scan channels table）
+
+#### Step 17-E：主程式更新與刪除廢棄檔案
+- [x] 修改 `lambda/api/main.py`：移除 channels router import 與掛載，新增 admin_channels router
+- [x] 刪除 `lambda/api/routers/channels.py`
+
+#### Step 17-F：郵件通知
+- [x] 修改 `scheduler/gmail_sender.py`：新增 `send_admin_removed_email` 函式
+
+#### 驗收
+- [x] `cdk synth` 通過
+- [x] `tsc --noEmit` 通過
+- [x] `jest` 15/15 全數通過（含 channels 資料表、channel_id-index GSI、CHANNELS_TABLE、index/* IAM 驗證）
+
+---
+
+### step18：前端改版（單一 Coder，依序執行）
+
+#### Step 18-A：型別定義
+- [x] 修改 `frontend/src/types/index.ts`：新增 PublicChannelItem、ChannelItem、ChannelCreateRequest、ChannelUpdateRequest、ChannelDeleteResponse
+- [x] 移除 `frontend/src/types/index.ts`：ChannelVerifyRequest、ChannelVerifyResponse
+
+#### Step 18-B：API 函式層
+- [x] 新增 `frontend/src/api/publicChannels.ts`（getPublicChannels）
+- [x] 新增 `frontend/src/api/adminChannels.ts`（adminCreateChannel、adminListChannels、adminUpdateChannel、adminDeleteChannel）
+
+#### Step 18-C：AddSubscriptionPage 重寫
+- [x] 修改 `frontend/src/pages/AddSubscriptionPage.tsx`：移除步驟 1 URL 輸入 + verify，改為 GET /public/channels 下拉選單
+
+#### Step 18-D：AdminChannelsPage 新增
+- [x] 新增 `frontend/src/pages/AdminChannelsPage.tsx`（列出頻道、新增、修改、刪除含確認對話框）
+- [x] 修改 `frontend/src/App.tsx`：新增 /admin/channels 路由（AdminRoute 守衛）
+
+#### Step 18-E：刪除廢棄檔案 + 建置驗證
+- [x] 刪除 `frontend/src/api/channels.ts`
+- [x] `npm run build` 無 TypeScript 錯誤

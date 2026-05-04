@@ -1,27 +1,28 @@
 /**
  * 公開訂閱頁面（兩步驟流程，無需登入）
- * 步驟 1：輸入頻道 URL 並呼叫 /channels/verify 確認頻道資訊
+ * 步驟 1：從下拉選單選擇管理員預設的 YouTube 頻道
  * 步驟 2：填寫訂閱設定後呼叫公開 API 送出，send_time 在送出前換算為 UTC
  * 成功後顯示確認訊息，提供「再訂閱一個」與「查看我的訂閱」操作入口
  */
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
-import { verifyChannel } from '../api/channels';
+import { getPublicChannels } from '../api/publicChannels';
 import { publicSubscribe } from '../api/public';
-import type { ChannelVerifyResponse } from '../types';
+import type { PublicChannelItem } from '../types';
 import { localTimeToUtc } from '../utils/timezone';
 
-/** 步驟 1：頻道 URL 驗證表單 schema */
-const channelUrlSchema = z.object({
-  channel_url: z.string().url('請輸入有效的 URL 格式'),
+/** 步驟 1：頻道選擇表單 schema */
+const channelSelectSchema = z.object({
+  channel_id: z.string().min(1, '請選擇頻道'),
 });
 
-/** 步驟 2：訂閱設定表單 schema（含公開版新增欄位）
+/**
+ * 步驟 2：訂閱設定表單 schema（含公開版新增欄位）
  * auto_cancel_days 在表單層保持 string 型別（HTML number input 傳出 string），
  * 驗證階段確認為有效整數且 >= 1，送出時在 handler 內 parseInt 轉換為 number
  * 此方式迴避 z.preprocess 導致 zodResolver 泛型推斷為 unknown 的已知問題
@@ -36,7 +37,7 @@ const step2Schema = z.object({
     .refine((val) => /^\d+$/.test(val) && parseInt(val, 10) >= 1, '至少 1 天，請輸入正整數'),
 });
 
-type ChannelUrlFormData = z.infer<typeof channelUrlSchema>;
+type ChannelSelectFormData = z.infer<typeof channelSelectSchema>;
 type Step2FormData = z.infer<typeof step2Schema>;
 
 /**
@@ -50,7 +51,7 @@ function resolveSubmitError(error: unknown): string {
 
     if (status === 400) {
       if (detail.includes('上限')) return '此信箱已達 5 個訂閱上限';
-      return '無法識別此頻道 URL，請確認格式';
+      return '送出失敗，請確認填寫內容';
     }
     if (status === 422) return '請確認欄位填寫正確';
   }
@@ -59,22 +60,24 @@ function resolveSubmitError(error: unknown): string {
 
 /**
  * 公開訂閱頁面元件
- * 兩步驟設計確保用戶確認頻道後再填寫設定，減少錯誤訂閱的可能
+ * 以下拉選單取代 URL 輸入，確保只能訂閱管理員核准的頻道
  * 不依賴 JWT，適合未登入用戶直接使用
  */
 export function AddSubscriptionPage() {
   const formRef = useRef<HTMLDivElement>(null);
   const [step, setStep] = useState<1 | 2 | 'success'>(1);
-  const [verifiedChannel, setVerifiedChannel] = useState<ChannelVerifyResponse | null>(null);
-  const [verifyError, setVerifyError] = useState<string | null>(null);
+  const [selectedChannel, setSelectedChannel] = useState<PublicChannelItem | null>(null);
+  const [channels, setChannels] = useState<PublicChannelItem[]>([]);
+  const [channelsLoading, setChannelsLoading] = useState<boolean>(true);
+  const [channelSelectError, setChannelSelectError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [successEmail, setSuccessEmail] = useState<string>('');
 
-  /** 步驟 1 表單 */
-  const channelForm = useForm<ChannelUrlFormData>({
-    resolver: zodResolver(channelUrlSchema),
+  /** 步驟 1：頻道選擇表單 */
+  const channelSelectForm = useForm<ChannelSelectFormData>({
+    resolver: zodResolver(channelSelectSchema),
     defaultValues: {
-      channel_url: 'https://www.youtube.com/@melrobbins',
+      channel_id: '',
     },
   });
 
@@ -90,34 +93,54 @@ export function AddSubscriptionPage() {
   });
 
   /**
-   * 處理步驟 1：呼叫頻道驗證 API
-   * 成功後保存頻道資訊並進入步驟 2，失敗顯示友善錯誤訊息
+   * 頁面載入時取得公開頻道列表
+   * 頻道資料由管理員維護，用戶只能從中選擇，確保訂閱品質
    */
-  const handleVerifyChannel = async (data: ChannelUrlFormData) => {
-    setVerifyError(null);
-    try {
-      const result = await verifyChannel({ channel_url: data.channel_url });
-      setVerifiedChannel(result);
-      setStep(2);
-    } catch {
-      setVerifyError('無法識別此頻道 URL，請確認格式');
+  useEffect(() => {
+    const fetchChannels = async () => {
+      setChannelsLoading(true);
+      try {
+        const data = await getPublicChannels();
+        setChannels(data);
+      } catch {
+        setChannels([]);
+      } finally {
+        setChannelsLoading(false);
+      }
+    };
+    void fetchChannels();
+  }, []);
+
+  /**
+   * 處理步驟 1：驗證頻道選擇並進入步驟 2
+   * 從已載入的頻道列表中找出所選頻道完整資訊（含 channel_url）
+   * 選中後儲存至 selectedChannel，供步驟 2 送出時使用
+   */
+  const handleSelectChannel = (data: ChannelSelectFormData) => {
+    setChannelSelectError(null);
+    const found = channels.find((ch) => ch.channel_id === data.channel_id);
+    if (!found) {
+      setChannelSelectError('找不到所選頻道，請重新選擇');
+      return;
     }
+    setSelectedChannel(found);
+    setStep(2);
   };
 
   /**
    * 處理步驟 2：呼叫公開訂閱 API
    * send_time 在送出前從本地時間換算為 UTC，確保後端儲存正確時間
-   * 成功後切換至成功狀態顯示確認訊息
+   * channel_url 取自步驟 1 選定的頻道，用戶無需手動輸入
    */
   const handleSubmitSubscription = async (data: Step2FormData) => {
-    if (!verifiedChannel) return;
+    if (!selectedChannel) return;
     setSubmitError(null);
 
     try {
       const utcSendTime = localTimeToUtc(data.send_time);
       await publicSubscribe({
         recipient_email: data.recipient_email,
-        channel_url: verifiedChannel.channel_url,
+        channel_url: selectedChannel.channel_url,
         audio_speed: parseFloat(data.audio_speed),
         send_time: utcSendTime,
         auto_cancel_days: parseInt(data.auto_cancel_days, 10),
@@ -131,18 +154,18 @@ export function AddSubscriptionPage() {
 
   /**
    * 重置表單回初始狀態，讓用戶可以繼續新增下一個訂閱
-   * 清除所有暫存資料與狀態，確保不殘留上一次的填寫內容
+   * 回到步驟 1 並清空已選頻道，確保下次選擇不受上一次影響
    */
   const handleReset = () => {
-    channelForm.reset({ channel_url: '' });
+    channelSelectForm.reset({ channel_id: '' });
     subscriptionForm.reset({
       recipient_email: '',
       audio_speed: '1.0',
       send_time: '09:00',
       auto_cancel_days: '3',
     });
-    setVerifiedChannel(null);
-    setVerifyError(null);
+    setSelectedChannel(null);
+    setChannelSelectError(null);
     setSubmitError(null);
     setSuccessEmail('');
     setStep(1);
@@ -228,7 +251,7 @@ export function AddSubscriptionPage() {
           開啟您的每日英語早晨
         </h2>
         <p className="text-gray-500 mb-5" style={{ fontSize: '15px', lineHeight: '1.7' }}>
-          只要輸入 YouTube 頻道網址，即可在信箱中開啟專屬英語練習。
+          只要選擇 YouTube 頻道，即可在信箱中開啟專屬英語練習。
         </p>
         <button
           type="button"
@@ -240,7 +263,7 @@ export function AddSubscriptionPage() {
             fontSize: '15px',
           }}
         >
-          👉 馬上輸入頻道網址，免費體驗
+          👉 馬上選擇頻道，免費體驗
         </button>
       </div>
 
@@ -281,7 +304,7 @@ export function AddSubscriptionPage() {
             <div className={`flex items-center justify-center w-7 h-7 rounded-full text-sm font-medium ${step === 1 ? 'bg-red-600 text-white' : 'bg-green-500 text-white'}`}>
               {step === 1 ? '1' : '✓'}
             </div>
-            <span className={`text-sm ${step === 1 ? 'text-gray-900 font-medium' : 'text-gray-400'}`}>確認頻道</span>
+            <span className={`text-sm ${step === 1 ? 'text-gray-900 font-medium' : 'text-gray-400'}`}>選擇頻道</span>
             <div className="flex-1 h-px bg-gray-200" />
             <div className={`flex items-center justify-center w-7 h-7 rounded-full text-sm font-medium ${step === 2 ? 'bg-red-600 text-white' : 'bg-gray-200 text-gray-500'}`}>
               2
@@ -289,60 +312,86 @@ export function AddSubscriptionPage() {
             <span className={`text-sm ${step === 2 ? 'text-gray-900 font-medium' : 'text-gray-400'}`}>填寫設定</span>
           </div>
 
-          {/* 步驟 1：輸入頻道 URL */}
+          {/* 步驟 1：選擇頻道 */}
           {step === 1 && (
             <div className="bg-white rounded-lg shadow-sm border p-6">
-              <h3 className="font-medium text-gray-900 mb-4">步驟 1：確認 YouTube 頻道</h3>
-              <form onSubmit={channelForm.handleSubmit(handleVerifyChannel)} className="space-y-4">
+              <h3 className="font-medium text-gray-900 mb-4">步驟 1：選擇 YouTube 頻道</h3>
+              <form onSubmit={channelSelectForm.handleSubmit(handleSelectChannel)} className="space-y-4">
                 <div>
-                  <label htmlFor="channel_url" className="block text-sm font-medium text-gray-700 mb-1">
-                    頻道 URL
+                  <label htmlFor="channel_id" className="block text-sm font-medium text-gray-700 mb-1">
+                    頻道
                   </label>
-                  <input
-                    id="channel_url"
-                    type="text"
-                    {...channelForm.register('channel_url')}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
-                    placeholder="https://www.youtube.com/@channelname"
-                  />
-                  {channelForm.formState.errors.channel_url && (
-                    <p className="text-red-500 text-xs mt-1">{channelForm.formState.errors.channel_url.message}</p>
+                  {channelsLoading ? (
+                    <select
+                      id="channel_id"
+                      disabled
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-gray-50 text-gray-400 cursor-not-allowed"
+                    >
+                      <option>載入中...</option>
+                    </select>
+                  ) : channels.length === 0 ? (
+                    <p className="text-sm text-gray-500 py-2">
+                      目前尚無可訂閱頻道，請聯繫管理員
+                    </p>
+                  ) : (
+                    <select
+                      id="channel_id"
+                      {...channelSelectForm.register('channel_id')}
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                    >
+                      <option value="">-- 請選擇頻道 --</option>
+                      {channels.map((ch) => (
+                        <option key={ch.channel_id} value={ch.channel_id}>
+                          {ch.channel_name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {channelSelectForm.formState.errors.channel_id && (
+                    <p className="text-red-500 text-xs mt-1">
+                      {channelSelectForm.formState.errors.channel_id.message}
+                    </p>
                   )}
                 </div>
 
-                {verifyError && (
+                {channelSelectError && (
                   <div className="bg-red-50 border border-red-200 rounded-md px-3 py-2">
-                    <p className="text-red-600 text-sm">{verifyError}</p>
+                    <p className="text-red-600 text-sm">{channelSelectError}</p>
                   </div>
                 )}
 
                 <button
                   type="submit"
-                  disabled={channelForm.formState.isSubmitting}
-                  className="w-full bg-red-600 text-white py-2 px-4 rounded-md font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
+                  disabled={channelsLoading || channels.length === 0}
+                  className="w-full bg-red-600 text-white py-2 px-4 rounded-md font-medium hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
-                  {channelForm.formState.isSubmitting ? '確認中...' : '確認頻道'}
+                  下一步
                 </button>
               </form>
+              <div className="mt-4 text-center">
+                <Link to="/admin/login" className="text-xs text-gray-400 hover:text-gray-600">
+                  管理員登入
+                </Link>
+              </div>
             </div>
           )}
 
           {/* 步驟 2：填寫訂閱設定 */}
-          {step === 2 && verifiedChannel && (
+          {step === 2 && selectedChannel && (
             <div className="bg-white rounded-lg shadow-sm border p-6">
               <h3 className="font-medium text-gray-900 mb-4">步驟 2：填寫訂閱設定</h3>
 
-              {/* 已確認的頻道資訊（唯讀）*/}
+              {/* 已選頻道資訊（唯讀）*/}
               <div className="bg-gray-50 rounded-md p-3 mb-4">
-                <p className="text-xs text-gray-500 mb-1">已確認頻道</p>
-                <p className="font-medium text-gray-900">{verifiedChannel.channel_name}</p>
+                <p className="text-xs text-gray-500 mb-1">已選頻道</p>
+                <p className="font-medium text-gray-900">{selectedChannel.channel_name}</p>
                 <a
-                  href={verifiedChannel.channel_url}
+                  href={selectedChannel.channel_url}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-xs text-blue-500 hover:underline"
                 >
-                  {verifiedChannel.channel_url}
+                  {selectedChannel.channel_url}
                 </a>
               </div>
 
@@ -360,7 +409,9 @@ export function AddSubscriptionPage() {
                     placeholder="your@email.com"
                   />
                   {subscriptionForm.formState.errors.recipient_email && (
-                    <p className="text-red-500 text-xs mt-1">{subscriptionForm.formState.errors.recipient_email.message}</p>
+                    <p className="text-red-500 text-xs mt-1">
+                      {subscriptionForm.formState.errors.recipient_email.message}
+                    </p>
                   )}
                 </div>
 
@@ -376,7 +427,9 @@ export function AddSubscriptionPage() {
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                   />
                   {subscriptionForm.formState.errors.send_time && (
-                    <p className="text-red-500 text-xs mt-1">{subscriptionForm.formState.errors.send_time.message}</p>
+                    <p className="text-red-500 text-xs mt-1">
+                      {subscriptionForm.formState.errors.send_time.message}
+                    </p>
                   )}
                 </div>
 
@@ -415,7 +468,9 @@ export function AddSubscriptionPage() {
                   />
                   <p className="text-xs text-gray-400 mt-1">頻道連續 N 天無新影片時，自動取消此訂閱</p>
                   {subscriptionForm.formState.errors.auto_cancel_days && (
-                    <p className="text-red-500 text-xs mt-1">{subscriptionForm.formState.errors.auto_cancel_days.message}</p>
+                    <p className="text-red-500 text-xs mt-1">
+                      {subscriptionForm.formState.errors.auto_cancel_days.message}
+                    </p>
                   )}
                 </div>
 

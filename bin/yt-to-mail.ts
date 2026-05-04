@@ -28,6 +28,7 @@ const app = new cdk.App();
 const allowedOrigin = app.node.tryGetContext('allowedOrigin') as string | undefined;
 const adminEmail = (app.node.tryGetContext('adminEmail') as string | undefined) ?? '';
 const adminPasswordHash = (app.node.tryGetContext('adminPasswordHash') as string | undefined) ?? '';
+const jwtSecretKey = (app.node.tryGetContext('jwtSecretKey') as string | undefined) ?? '';
 
 new YtToMailBackendStack(app, 'YtToMailBackendStack', {
   description: 'yt-to-mail 雲端後端：Lambda Function URL + DynamoDB',
@@ -38,6 +39,7 @@ new YtToMailBackendStack(app, 'YtToMailBackendStack', {
   allowedOrigin,
   adminEmail,
   adminPasswordHash,
+  jwtSecretKey,
 });
 
 new YtToMailFrontendStack(app, 'YtToMailFrontendStack', {

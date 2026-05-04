@@ -2,8 +2,10 @@
  * YtToMailBackendStack 單元測試
  *
  * 驗證 CDK Stack 產生的 CloudFormation 資源是否符合規格：
- * - 三張 DynamoDB 資料表存在且設定正確
- * - IAM 角色與 Policy 最小權限
+ * - 四張 DynamoDB 資料表存在且設定正確（users、subscriptions、history、channels）
+ * - subscriptions 資料表含兩個 GSI（user_id-index、channel_id-index）
+ * - channels 資料表 PK 為 channel_id，無 GSI
+ * - IAM 角色與 Policy 最小權限（含 index/* ARN）
  * - Lambda Function 設定（Runtime、記憶體、Timeout）
  * - Lambda Function URL CORS 設定
  *
@@ -25,8 +27,8 @@ describe('YtToMailBackendStack', () => {
   });
 
   describe('DynamoDB 資料表', () => {
-    test('應建立三張 DynamoDB 資料表', () => {
-      template.resourceCountIs('AWS::DynamoDB::Table', 3);
+    test('應建立四張 DynamoDB 資料表（users、subscriptions、history、channels）', () => {
+      template.resourceCountIs('AWS::DynamoDB::Table', 4);
     });
 
     test('users 資料表應存在 email-index GSI', () => {
@@ -44,18 +46,44 @@ describe('YtToMailBackendStack', () => {
       });
     });
 
-    test('subscriptions 資料表應存在 user_id-index GSI', () => {
+    test('subscriptions 資料表應同時存在 user_id-index 與 channel_id-index 兩個 GSI', () => {
+      /**
+       * 使用 Match.arrayWith 進行部分比對，
+       * 因為 subscriptions 資料表含兩個 GSI，
+       * 不限定陣列長度以提高測試可維護性。
+       */
       template.hasResourceProperties('AWS::DynamoDB::Table', {
         TableName: 'yt-to-mail-subscriptions',
-        GlobalSecondaryIndexes: [
-          {
+        GlobalSecondaryIndexes: Match.arrayWith([
+          Match.objectLike({
             IndexName: 'user_id-index',
             KeySchema: [
               { AttributeName: 'user_id', KeyType: 'HASH' },
             ],
             Projection: { ProjectionType: 'ALL' },
-          },
+          }),
+          Match.objectLike({
+            IndexName: 'channel_id-index',
+            KeySchema: [
+              { AttributeName: 'channel_id', KeyType: 'HASH' },
+            ],
+            Projection: { ProjectionType: 'ALL' },
+          }),
+        ]),
+      });
+    });
+
+    test('channels 資料表應存在，PK 為 channel_id', () => {
+      /**
+       * 驗證 step17 新增的頻道白名單資料表存在且 PK 設定正確。
+       * channels 資料表無 GSI，使用 GetItem 與 Scan 即可完成所有操作。
+       */
+      template.hasResourceProperties('AWS::DynamoDB::Table', {
+        TableName: 'yt-to-mail-channels',
+        KeySchema: [
+          { AttributeName: 'channel_id', KeyType: 'HASH' },
         ],
+        BillingMode: 'PAY_PER_REQUEST',
       });
     });
 
@@ -95,17 +123,22 @@ describe('YtToMailBackendStack', () => {
       });
     });
 
-    test('Lambda 應設定所有必要的環境變數', () => {
+    test('Lambda 應設定所有必要的環境變數（含 CHANNELS_TABLE）', () => {
+      /**
+       * 驗證 step17 新增的 CHANNELS_TABLE 環境變數已正確注入 Lambda，
+       * 讓 admin_channels router 與 public.py 能取得頻道白名單資料表名稱。
+       */
       template.hasResourceProperties('AWS::Lambda::Function', {
         FunctionName: 'yt-to-mail-api',
         Environment: {
-          Variables: {
+          Variables: Match.objectLike({
             USERS_TABLE: 'yt-to-mail-users',
             SUBSCRIPTIONS_TABLE: 'yt-to-mail-subscriptions',
             HISTORY_TABLE: 'yt-to-mail-history',
+            CHANNELS_TABLE: 'yt-to-mail-channels',
             ENVIRONMENT: 'production',
             JWT_EXPIRE_HOURS: '24',
-          },
+          }),
         },
       });
     });
@@ -171,6 +204,30 @@ describe('YtToMailBackendStack', () => {
     });
   });
 
+  describe('IAM 政策資源 ARN', () => {
+    test('DynamoDB 政策資源應包含 index/* ARN（GSI 查詢所需）', () => {
+      /**
+       * 驗證 step17 補充的 index/* ARN 存在於 DynamoDB Policy resources 中，
+       * 確保 channel_id-index GSI 查詢不會因缺少 ARN 而被 IAM 拒絕。
+       *
+       * CDK 在 synth 時已將 Pseudo Parameter 解析為實際值（因為 env 已指定 account/region），
+       * 故以字串結尾比對方式驗證，不依賴 Fn::Join 結構。
+       */
+      const policies = template.findResources('AWS::IAM::Policy', {
+        Properties: { PolicyName: 'yt-to-mail-dynamodb-policy' },
+      });
+      const policyKeys = Object.keys(policies);
+      expect(policyKeys.length).toBe(1);
+
+      const statements: Array<{ Resource?: string[] }> = policies[policyKeys[0]].Properties.PolicyDocument.Statement;
+      const dynamoStatement = statements.find((s) =>
+        Array.isArray(s.Resource) &&
+        s.Resource.some((r: string) => typeof r === 'string' && r.includes('yt-to-mail-*/index/*'))
+      );
+      expect(dynamoStatement).toBeDefined();
+    });
+  });
+
   describe('CloudFormation Outputs', () => {
     test('應輸出 API Endpoint', () => {
       template.hasOutput('ApiEndpoint', {
@@ -178,6 +235,14 @@ describe('YtToMailBackendStack', () => {
           Name: 'YtToMailApiEndpoint',
         },
       });
+    });
+
+    test('應輸出 ChannelsTableName', () => {
+      /**
+       * 驗證 step17 新增的 ChannelsTableName CfnOutput 存在，
+       * 供部署後確認資料表名稱。
+       */
+      template.hasOutput('ChannelsTableName', {});
     });
   });
 });

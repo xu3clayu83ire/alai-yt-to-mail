@@ -17,6 +17,9 @@
     ]
   },
   "context": {
+    "adminEmail": "admin@gmail.com",
+    "adminPasswordHash": "$2b$12$zsTf8yHjhuPP5UkEgl9UguUnHeESiHWus.Cy/1hA4qI6CHwX8VL1e",
+    "jwtSecretKey": "7f217d14bfd9b6fd9cd523bd7365e4200906b2b11c4078b2627fbc4fdd95e5ac",
     "@aws-cdk/aws-lambda:recognizeLayerVersion": true,
     "@aws-cdk/core:checkSecretUsage": true,
     "@aws-cdk/core:target-partitions": [

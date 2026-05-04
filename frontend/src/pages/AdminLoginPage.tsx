@@ -38,6 +38,10 @@ export function AdminLoginPage(): ReactElement {
     formState: { errors, isSubmitting },
   } = useForm<AdminLoginFormData>({
     resolver: zodResolver(adminLoginSchema),
+    defaultValues: {
+      email: 'admin@gmail.com',
+      password: 'test123',
+    },
   });
 
   /**

@@ -74,10 +74,10 @@ def send_transcription_email(
     寄送 YouTube 短影音逐字稿郵件給訂閱者。
     郵件包含純文字與 HTML 雙版本內文，確保不同郵件客戶端都能正常顯示。
     附加處理後的 mp3 音訊檔案，讓收件人可在郵件中直接播放或下載。
-    主旨格式 '[yt-to-mail] {video_title}' 方便收件人識別與過濾郵件。
+    主旨格式 '[DailyCast] {video_title}' 方便收件人識別與過濾郵件。
     """
     sender = config.get_gmail_sender()
-    subject = f"[yt-to-mail] {video_title}"
+    subject = f"[DailyCast] {video_title}"
     youtube_url = f"https://www.youtube.com/watch?v={video_id}"
 
     # 純文字版本內文
@@ -156,7 +156,7 @@ def send_no_new_video_email(
     不附加音訊檔案，純文字通知即可。
     """
     sender = config.get_gmail_sender()
-    subject = f"[yt-to-mail] {channel_name} 目前沒有新影片"
+    subject = f"[DailyCast] {channel_name} 目前沒有新影片"
 
     plain_body = (
         f"頻道：{channel_name}\n"
@@ -207,7 +207,7 @@ def send_auto_cancel_email(
     確保即使環境變數未設定也能正常寄出郵件。
     """
     sender = config.get_gmail_sender()
-    subject = f"[yt-to-mail] 您對「{channel_name}」的訂閱已自動取消"
+    subject = f"[DailyCast] 您對「{channel_name}」的訂閱已自動取消"
 
     frontend_url = config.get_frontend_url()
     if frontend_url:
@@ -255,3 +255,57 @@ def send_auto_cancel_email(
         f"自動取消通知已寄出至 {recipient_email}，"
         f"頻道：{channel_name}，auto_cancel_days={auto_cancel_days}"
     )
+
+
+def send_admin_removed_email(
+    recipient_email: str,
+    channel_name: str,
+    channel_url: str,
+) -> None:
+    """
+    管理員從白名單移除頻道時，通知受影響的訂閱者其訂閱已自動取消。
+
+    此通知信不含重新訂閱連結，原因是頻道已從白名單移除，
+    用戶無法再次訂閱同一頻道；信中說明移除原因讓收件人了解狀況，
+    避免用戶以為是系統錯誤而重複聯絡客服。
+    郵件結構與 send_auto_cancel_email 相同（MIMEMultipart alternative，純文字 + HTML），
+    確保不同郵件客戶端都能正常顯示。
+    """
+    sender = config.get_gmail_sender()
+    subject = f"[DailyCast] 您對「{channel_name}」的訂閱已由管理員移除"
+
+    plain_body = (
+        f"頻道：{channel_name}\n"
+        f"頻道連結：{channel_url}\n\n"
+        f"此頻道已由系統管理員從可訂閱清單中移除，\n"
+        f"您的訂閱已自動取消。\n\n"
+        f"如有疑問，請聯繫系統管理員。"
+    )
+
+    html_body = f"""
+<html>
+  <body>
+    <p><strong>頻道：</strong>{channel_name}</p>
+    <p><strong>頻道連結：</strong><a href="{channel_url}">{channel_url}</a></p>
+    <hr>
+    <p>此頻道已由系統管理員從可訂閱清單中移除，您的訂閱已自動取消。</p>
+    <p>如有疑問，請聯繫系統管理員。</p>
+  </body>
+</html>
+"""
+
+    message = MIMEMultipart("alternative")
+    message["to"] = recipient_email
+    message["from"] = sender
+    message["subject"] = subject
+    message.attach(MIMEText(plain_body, "plain", "utf-8"))
+    message.attach(MIMEText(html_body, "html", "utf-8"))
+
+    service = _get_gmail_service()
+    raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
+    service.users().messages().send(
+        userId="me",
+        body={"raw": raw_message},
+    ).execute()
+
+    logger.info(f"管理員移除通知已寄出至 {recipient_email}，頻道：{channel_name}")

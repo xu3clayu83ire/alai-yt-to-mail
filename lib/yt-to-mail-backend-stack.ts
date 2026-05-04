@@ -34,6 +34,7 @@ interface YtToMailBackendStackProps extends cdk.StackProps {
   allowedOrigin?: string;
   adminEmail?: string;
   adminPasswordHash?: string;
+  jwtSecretKey?: string;
 }
 
 export class YtToMailBackendStack extends cdk.Stack {
@@ -47,6 +48,7 @@ export class YtToMailBackendStack extends cdk.Stack {
     const allowedOrigin = props?.allowedOrigin ?? '*';
     const adminEmail = props?.adminEmail ?? '';
     const adminPasswordHash = props?.adminPasswordHash ?? '';
+    const jwtSecretKey = props?.jwtSecretKey ?? '';
 
     // =========================================================
     // Step 1：建立三張 DynamoDB 資料表
@@ -131,6 +133,35 @@ export class YtToMailBackendStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
+    /**
+     * channels 資料表：管理員維護的可訂閱頻道白名單
+     * 使用 channel_id 作為 Partition Key，讓 GetItem 可直接查詢單一頻道，
+     * 無需 GSI 即可完成 CRUD 操作；全表 Scan 數量小規模可接受。
+     */
+    const channelsTable = new dynamodb.Table(this, 'ChannelsTable', {
+      tableName: 'yt-to-mail-channels',
+      partitionKey: {
+        name: 'channel_id',
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    /**
+     * subscriptions 資料表補充 channel_id-index GSI
+     * 管理員刪除頻道時，以 channel_id 快速查詢所有相關訂閱並串聯取消，
+     * 避免全表 Scan 效率低落；此 GSI 在 cdk deploy 時線上新增，現有資料不受影響。
+     */
+    subscriptionsTable.addGlobalSecondaryIndex({
+      indexName: 'channel_id-index',
+      partitionKey: {
+        name: 'channel_id',
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
     // =========================================================
     // Step 2：建立 IAM Lambda 執行角色（最小權限原則）
     // =========================================================
@@ -164,6 +195,7 @@ export class YtToMailBackendStack extends cdk.Stack {
           ],
           resources: [
             `arn:aws:dynamodb:${this.region}:${this.account}:table/yt-to-mail-*`,
+            `arn:aws:dynamodb:${this.region}:${this.account}:table/yt-to-mail-*/index/*`,
           ],
         }),
         new iam.PolicyStatement({
@@ -217,11 +249,12 @@ export class YtToMailBackendStack extends cdk.Stack {
       }),
       role: lambdaRole,
       environment: {
-        JWT_SECRET_KEY: '',  // 部署後透過 Lambda 主控台或 Secrets Manager 設定
+        JWT_SECRET_KEY: jwtSecretKey,
         JWT_EXPIRE_HOURS: '24',
         USERS_TABLE: 'yt-to-mail-users',
         SUBSCRIPTIONS_TABLE: 'yt-to-mail-subscriptions',
         HISTORY_TABLE: 'yt-to-mail-history',
+        CHANNELS_TABLE: 'yt-to-mail-channels',
         ENVIRONMENT: 'production',
         // 管理員憑證從 CDK Context 注入，空字串代表停用管理員登入分支
         ADMIN_EMAIL: adminEmail,
@@ -279,6 +312,11 @@ export class YtToMailBackendStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'HistoryTableName', {
       value: historyTable.tableName,
       description: 'DynamoDB history 資料表名稱',
+    });
+
+    new cdk.CfnOutput(this, 'ChannelsTableName', {
+      value: channelsTable.tableName,
+      description: 'DynamoDB channels 資料表名稱',
     });
 
     // =========================================================

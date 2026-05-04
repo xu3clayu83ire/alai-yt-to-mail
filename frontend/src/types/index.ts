@@ -80,18 +80,40 @@ export interface HistoryItem {
   error_message?: string;
 }
 
-// ===================== 頻道確認相關 =====================
+// ===================== 頻道管理相關 =====================
 
-/** 頻道確認請求 */
-export interface ChannelVerifyRequest {
+/** 公開頻道列表項目（無需認證即可取得）*/
+export interface PublicChannelItem {
+  channel_id: string;
+  channel_name: string;
   channel_url: string;
 }
 
-/** 頻道確認回應（包含頻道名稱與 ID）*/
-export interface ChannelVerifyResponse {
-  channel_url: string;
+/** 管理員頻道項目（含建立時間）*/
+export interface ChannelItem {
   channel_id: string;
   channel_name: string;
+  channel_url: string;
+  created_at: string;
+}
+
+/** 建立頻道請求 payload */
+export interface ChannelCreateRequest {
+  channel_id: string;
+  channel_name: string;
+  channel_url: string;
+}
+
+/** 更新頻道請求 payload（所有欄位選填）*/
+export interface ChannelUpdateRequest {
+  channel_name?: string;
+  channel_url?: string;
+}
+
+/** 刪除頻道回應（含受影響訂閱數）*/
+export interface ChannelDeleteResponse {
+  message: string;
+  cancelled_subscriptions: number;
 }
 
 // ===================== API 錯誤 =====================

@@ -12,7 +12,7 @@ load_dotenv()  # 本機開發時從 .env 載入環境變數，Lambda 上無 .env
 from fastapi import FastAPI
 from mangum import Mangum
 
-from routers import admin, auth, subscriptions, history, channels, public
+from routers import admin, admin_channels, auth, subscriptions, history, public
 
 # 建立 FastAPI 應用實例
 # 設定標題與說明，方便 /docs 自動文件辨識
@@ -20,6 +20,7 @@ app = FastAPI(
     title="yt-to-mail API",
     description="YouTube 摘要信件服務的雲端後端 API，提供用戶認證、訂閱管理與歷史查詢。",
     version="2.0.0",
+    redirect_slashes=False,
 )
 
 # CORS 由 Lambda Function URL 統一處理，不在應用層重複設定，
@@ -29,9 +30,9 @@ app = FastAPI(
 app.include_router(auth.router, prefix="/auth", tags=["認證"])
 app.include_router(subscriptions.router, prefix="/subscriptions", tags=["訂閱管理"])
 app.include_router(history.router, prefix="/history", tags=["歷史紀錄"])
-app.include_router(channels.router, prefix="/channels", tags=["頻道驗證"])
 app.include_router(public.router, prefix="/public", tags=["public"])
 app.include_router(admin.router, prefix="/admin", tags=["admin"])
+app.include_router(admin_channels.router, prefix="/admin/channels", tags=["admin-channels"])
 
 
 @app.get("/health", tags=["健康檢查"])

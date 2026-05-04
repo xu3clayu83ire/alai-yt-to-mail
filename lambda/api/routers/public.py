@@ -21,17 +21,20 @@ from urllib.parse import unquote, urlparse
 
 from fastapi import APIRouter, HTTPException, Query, status
 
+from models.channel import PublicChannelResponse
 from models.subscription import PublicSubscriptionCreate, PublicSubscriptionResponse
 from services.dynamo_service import (
     delete_item,
     get_item,
     put_item,
     query_by_gsi_partition,
+    scan_table,
 )
 
 router = APIRouter()
 
 _SUBSCRIPTIONS_TABLE: str = os.environ.get("SUBSCRIPTIONS_TABLE", "yt-to-mail-subscriptions")
+_CHANNELS_TABLE: str = os.environ.get("CHANNELS_TABLE", "yt-to-mail-channels")
 _MAX_SUBSCRIPTIONS: int = 5
 
 # YouTube 頻道 URL 解析正規表達式（與 channels.py 保持一致）
@@ -247,3 +250,24 @@ async def delete_public_subscription(
     )
 
     return {"message": "deleted"}
+
+
+@router.get("/channels", response_model=list[PublicChannelResponse])
+async def list_public_channels() -> list[PublicChannelResponse]:
+    """
+    公開頻道列表端點（無需 JWT 認證）。
+
+    使用 scan_table 全表掃描取得所有管理員維護的可訂閱頻道，
+    回傳欄位不含 created_at，減少前端下拉選單的資料量。
+    頻道數量小規模（預期 < 100 筆），Scan 效能可接受，
+    後續若需優化可加入快取層。
+    """
+    items = scan_table(_CHANNELS_TABLE)
+    return [
+        PublicChannelResponse(
+            channel_id=item["channel_id"],
+            channel_name=item.get("channel_name", ""),
+            channel_url=item.get("channel_url", ""),
+        )
+        for item in items
+    ]
